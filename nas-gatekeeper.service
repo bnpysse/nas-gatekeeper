@@ -1,0 +1,17 @@
+[Unit]
+Description=NAS Gatekeeper (GoDaddy DDNS & Podman Router)
+After=network.target
+
+[Service]
+Type=simple
+# Adjust the ExecStart path if the binary is installed somewhere else.
+ExecStart=/usr/local/bin/nas-gatekeeper
+Restart=on-failure
+RestartSec=10
+User=root
+
+# To allow accessing Podman API securely
+Environment="RUST_LOG=info"
+
+[Install]
+WantedBy=multi-user.target
