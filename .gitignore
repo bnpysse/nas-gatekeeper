@@ -3,3 +3,8 @@
 .antigravity
 config.toml
 *.toml.local
+
+service_account.json
+
+client_secret.json
+token.json
