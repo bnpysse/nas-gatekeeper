@@ -14,7 +14,7 @@ def generate_content_with_fallback(prompt: str) -> str:
     """调用阿里百炼的 qwen3.7-flash 模型"""
     try:
         response = client.chat.completions.create(
-            model="qwen3.7-flash",
+            model="qwen3.7-plus",
             messages=[{"role": "user", "content": prompt}],
         )
         return response.choices[0].message.content
