@@ -9,20 +9,17 @@ from youtube_transcript_api.formatters import TextFormatter
 
 import os
 
-# 想要订阅的 RSS 源列表
-# 格式: {"name": "频道名称", "url": "RSS链接", "type": "youtube"或"discord"}
-RSS_FEEDS = [
-    # 测试科技频道: Marques Brownlee
-    {"name": "Marques Brownlee", "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ", "type": "youtube"},
-    
-    # 核心科技与 AI/半导体 Substack
-    {"name": "ChinaTalk", "url": "https://www.chinatalk.media/feed", "type": "substack"},
-    {"name": "Import AI", "url": "https://importai.substack.com/feed", "type": "substack"},
-    {"name": "Ahead of AI", "url": "https://magazine.sebastianraschka.com/feed", "type": "substack"},
-    {"name": "Latent Space", "url": "https://www.latent.space/feed", "type": "substack"},
-    {"name": "SemiAnalysis", "url": "https://newsletter.semianalysis.com/feed", "type": "substack"},
-    {"name": "The Wondrous Mind of Dereck Bearsong", "url": "https://dereckbearsong.substack.com/feed", "type": "substack"},
-]
+import json
+
+def load_feeds():
+    feeds_path = os.path.join(os.path.dirname(__file__), "feeds.json")
+    if not os.path.exists(feeds_path):
+        print(f"⚠️ 找不到配置文件: {feeds_path}")
+        return []
+    with open(feeds_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+RSS_FEEDS = load_feeds()
 
 VAULT_PATH = os.getenv("VAULT_PATH", "/Users/woodman/dev/nas-gatekeeper/SecondBrain-Quartz/content/notes/Auto_Clippings")
 
@@ -118,6 +115,32 @@ def process_substack_entry(feed_name: str, entry):
     
     mark_processed(article_id, "substack")
 
+from processor import analyze_reddit_post
+
+def process_reddit_entry(feed_name: str, entry):
+    video_id = entry.id
+    url = entry.link
+    title = entry.title
+    
+    if is_processed(video_id):
+        return
+        
+    print(f"🔥 发现新 Reddit 热门: {title}")
+    
+    # 解析 HTML 内容
+    raw_html = entry.content[0].value if 'content' in entry else entry.summary
+    import bs4
+    soup = bs4.BeautifulSoup(raw_html, 'html.parser')
+    text_content = soup.get_text(separator=' ', strip=True)
+    
+    print("🧠 正在使用大模型提炼 Reddit 帖子...")
+    analysis = analyze_reddit_post(title, feed_name, url, text_content)
+    
+    safe_title = re.sub(r'[\\/*?:"<>|]', "", title)[:60]
+    final_md = f"---\ntitle: \"{safe_title}\"\ntags: [Reddit_热榜, {feed_name.replace('/', '_')}]\n---\n\n" + analysis
+    save_to_vault(f"Reddit_{safe_title}.md", final_md)
+    mark_processed(video_id, "reddit")
+
 
 def run_rss_fetcher():
     print("🚀 Gatekeeper RSS/YT Fetcher 启动！")
@@ -134,6 +157,9 @@ def run_rss_fetcher():
                 process_youtube_entry(feed["name"], entry)
             elif feed["type"] == "substack":
                 process_substack_entry(feed["name"], entry)
+            elif feed["type"] == "reddit":
+                process_reddit_entry(feed["name"], entry)
+                break # Reddit只拉取当天的Top 1，绝不泛滥
 
 if __name__ == "__main__":
     run_rss_fetcher()
