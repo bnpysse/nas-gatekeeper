@@ -1,0 +1,141 @@
+/* ==========================================
+   天眼全息智导系统 V6.0 — 暗黑军事风格主题
+   ========================================== */
+
+/* 全局暗黑背景 */
+.stApp {
+    background-color: #0B0F19;
+    color: #E5E7EB;
+}
+
+/* 侧边栏 */
+section[data-testid="stSidebar"] {
+    background-color: #111827;
+    border-right: 1px solid #1F2937;
+}
+
+section[data-testid="stSidebar"] .stSelectbox label,
+section[data-testid="stSidebar"] .stRadio label {
+    color: #9CA3AF;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* HUD 卡片 */
+.hud-card {
+    background: linear-gradient(135deg, #1F2937 0%, #111827 100%);
+    border: 1px solid #374151;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    transition: border-color 0.2s ease;
+}
+.hud-card:hover {
+    border-color: #4B5563;
+}
+
+.hud-card-title {
+    color: #9CA3AF;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed #374151;
+}
+
+/* 战区判定条 */
+.zone-bar {
+    padding: 12px 16px;
+    border-radius: 8px;
+    background-color: #1F2937;
+    margin-top: 8px;
+    border-left: 4px solid;
+}
+.zone-bar .zone-label {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+.zone-bar .zone-command {
+    font-size: 0.85rem;
+    color: #D1D5DB;
+    line-height: 1.5;
+}
+
+/* 数据行 */
+.data-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    font-size: 0.85rem;
+}
+.data-row .data-label {
+    color: #6B7280;
+    font-weight: 500;
+    min-width: 60px;
+}
+.data-row .data-value {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 资金矩阵表格 */
+.fund-matrix table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+.fund-matrix th {
+    color: #6B7280;
+    font-weight: 600;
+    text-align: left;
+    padding: 4px 6px;
+    border-bottom: 1px solid #374151;
+}
+.fund-matrix td {
+    padding: 5px 6px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+}
+
+/* 教义浮窗 */
+.doctrine-box {
+    background-color: #0B0F19;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-top: 8px;
+    line-height: 1.7;
+    font-size: 0.82rem;
+    color: #D1D5DB;
+    border: 1px solid;
+}
+.doctrine-box .doctrine-title {
+    font-weight: 700;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed #374151;
+}
+
+/* 隐藏 Streamlit 默认元素 */
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+header { visibility: hidden; }
+
+/* 指标标签颜色 */
+.c-blue    { color: #3B82F6; }
+.c-gold    { color: #FFD700; }
+.c-pink    { color: #EC4899; }
+.c-purple  { color: #A855F7; }
+.c-cyan    { color: #06B6D4; }
+.c-orange  { color: #F97316; }
+.c-red     { color: #EF4444; }
+.c-green   { color: #10B981; }
+.c-white   { color: #FFFFFF; }
+.c-mute    { color: #6B7280; }

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gatekeeper | Second Brain</title>
+    <!-- Google Fonts: Inter and Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons for modern vector icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Invisible trigger zone on the left edge to open sidebar -->
+        <div class="sidebar-trigger"></div>
+        
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-box">
+                    <i class="ph-fill ph-brain"></i>
+                </div>
+                <div class="brand">
+                    <h1>Gatekeeper</h1>
+                    <span class="subtitle">Second Brain OS</span>
+                </div>
+            </div>
+
+            <nav class="nav-menu">
+                <p class="nav-label">MODULES</p>
+                <a href="#" class="nav-item active" data-target="/quartz/">
+                    <i class="ph ph-tree-evergreen"></i>
+                    <span>Digital Garden (Q5)</span>
+                </a>
+                <a href="#" class="nav-item" data-target="/omni/">
+                    <i class="ph ph-chart-line-up"></i>
+                    <span>Omni Analytics</span>
+                </a>
+                <a href="#" class="nav-item" data-target="/quartz/tags/TG_资讯池">
+                    <i class="ph ph-telegram-logo"></i>
+                    <span>TG Aggregator</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-status">
+                    <div class="status-indicator"></div>
+                    <span>System Online</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content (Iframe) -->
+        <main class="main-content">
+            <!-- Loading overlay to smooth out transitions -->
+            <div class="loading-overlay" id="loadingOverlay">
+                <i class="ph ph-spinner-gap spinner"></i>
+            </div>
+            <iframe id="appFrame" src="/quartz/" frameborder="0" title="Application Window"></iframe>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

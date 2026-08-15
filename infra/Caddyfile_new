@@ -1,0 +1,9 @@
+http://brain.donglida.xyz, http://brain.imdld.com {
+    handle_path /temp_audio/* {
+        root * /opt/temp_audio
+        file_server
+    }
+    handle {
+        reverse_proxy localhost:8080
+    }
+}

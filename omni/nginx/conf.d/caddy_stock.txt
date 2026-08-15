@@ -1,0 +1,27 @@
+# ==========================================
+# 追加到现有 Caddyfile 末尾
+# (原有 erth.donglida.xyz 配置保持不动)
+# ==========================================
+
+stock.donglida.xyz {
+    # Caddy 自动申请/续期 Let's Encrypt 证书
+
+    # 反代到 Streamlit (本机 8501)
+    reverse_proxy localhost:8501 {
+        # WebSocket 支持 (Streamlit 必须)
+        header_up Upgrade {http.upgrade}
+        header_up Connection {http.connection}
+
+        # 健康检查
+        health_uri  /_stcore/health
+        health_interval 30s
+    }
+
+    # 日志
+    log {
+        output file /var/log/caddy/stock.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}

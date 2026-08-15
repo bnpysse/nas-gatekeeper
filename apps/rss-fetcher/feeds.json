@@ -1,0 +1,52 @@
+[
+    {
+        "name": "Marques Brownlee",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ",
+        "type": "youtube"
+    },
+    {
+        "name": "ChinaTalk",
+        "url": "https://www.chinatalk.media/feed",
+        "type": "substack"
+    },
+    {
+        "name": "Import AI",
+        "url": "https://importai.substack.com/feed",
+        "type": "substack"
+    },
+    {
+        "name": "Ahead of AI",
+        "url": "https://magazine.sebastianraschka.com/feed",
+        "type": "substack"
+    },
+    {
+        "name": "Latent Space",
+        "url": "https://www.latent.space/feed",
+        "type": "substack"
+    },
+    {
+        "name": "SemiAnalysis",
+        "url": "https://newsletter.semianalysis.com/feed",
+        "type": "substack"
+    },
+    {
+        "name": "The Wondrous Mind of Dereck Bearsong",
+        "url": "https://dereckbearsong.substack.com/feed",
+        "type": "substack"
+    },
+    {
+        "name": "r/LocalLLaMA",
+        "url": "https://www.reddit.com/r/LocalLLaMA/top/.rss?t=day",
+        "type": "reddit"
+    },
+    {
+        "name": "r/CursorAI",
+        "url": "https://www.reddit.com/r/CursorAI/top/.rss?t=day",
+        "type": "reddit"
+    },
+    {
+        "name": "r/hardware",
+        "url": "https://www.reddit.com/r/hardware/top/.rss?t=day",
+        "type": "reddit"
+    }
+]

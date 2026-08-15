@@ -5,6 +5,16 @@ config.toml
 *.toml.local
 
 service_account.json
-
 client_secret.json
 token.json
+.env
+.env.*
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+scratch/
+**/.env
+**/.env.local
+notes_backup_from_n100/
+**/node_modules/

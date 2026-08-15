@@ -1,0 +1,21 @@
+[Unit]
+Description=Woodman Obsidian Brain Telegram Bot Service
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/obsidian_bot
+# 指定加载环境配置文件 (必须 chmod 600)
+EnvironmentFile=-/etc/nas-gatekeeper/obsidian_bot.env
+ExecStart=/usr/bin/python3 /opt/obsidian_bot/bot.py
+Restart=always
+RestartSec=10s
+
+# 安全增强规则
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

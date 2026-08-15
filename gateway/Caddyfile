@@ -1,0 +1,31 @@
+# ==========================================
+# Gatekeeper Unified Portal - Caddyfile
+# 部署目标: N100 (Debian LXC)
+# 作用: 统一端口 (80)，反向代理子应用
+# ==========================================
+
+# 如果您有本地域名(如 brain.local) 可以替换这里的IP
+http://192.168.2.9:80 {
+    
+    # 1. 静态主页 (统一导航门户)
+    # 将此路径指向您推送到 N100 的 nas-gatekeeper/portal 文件夹路径
+    root * /opt/portal
+    file_server
+
+    # 2. Quartz (数字花园) - 运行在 8080 端口
+    # 因为我们在 iframe 中调用的 src="/quartz/"，需要将此请求代理过去。
+    # Quartz 的 baseUrl 设置决定了内部资源的相对路径。
+    handle_path /quartz* {
+        reverse_proxy localhost:8080
+    }
+
+    # 3. Omni (股票分析) - Streamlit 运行在 8501 端口
+    # 注意：Streamlit 需要代理 WebSocket 并且建议在 streamlit 启动时配置 base URL。
+    # 这里通过 handle_path 剔除 /omni 前缀后发给后端。
+    handle_path /omni* {
+        reverse_proxy localhost:8501 {
+            header_up Upgrade {http.upgrade}
+            header_up Connection {http.connection}
+        }
+    }
+}

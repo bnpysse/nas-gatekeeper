@@ -1,0 +1,12 @@
+.venv/
+.git/
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+*.egg-info/
+radar_v52.py
+tactical_coords.json
+README.md
+.python-version

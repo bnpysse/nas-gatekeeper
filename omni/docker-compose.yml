@@ -1,0 +1,36 @@
+# ==========================================
+# Omni 股票图表分析模块 — Compose 编排
+# 兼容: Docker Compose v2 / podman-compose
+#
+# 架构说明:
+#   作为 SecondBrain 统一门户的子模块运行于 N100。
+#   本容器只跑 Streamlit，监听 localhost:8501
+#   网关 (Nginx/Caddy) 反代 /omni -> 127.0.0.1:8501
+#
+# 启动: podman-compose up -d (或 docker compose up -d)
+# ==========================================
+
+services:
+
+  # ── Streamlit 应用 ──
+  omni:
+    build: .
+    image: omni-app:latest
+    container_name: omni-app
+    restart: unless-stopped
+    ports:
+      # 只绑定本地回环, 不对外暴露
+      - "127.0.0.1:8501:8501"
+    environment:
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    volumes:
+      - ./data:/app/data:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

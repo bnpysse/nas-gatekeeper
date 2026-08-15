@@ -1,0 +1,21 @@
+services:
+  secondbrain-flow:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: secondbrain-flow
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ../src:/app/src
+      - ../token.json:/app/token.json
+      - ../service_account.json:/app/service_account.json:ro
+      - ../output:/app/output
+      - ../cookies.txt:/app/cookies.txt
+      - ../douyin_cookies.txt:/app/douyin_cookies.txt
+      - /opt/SecondBrain-Quartz/content/notes:/app/notes:rw
+    environment:
+      - TZ=Asia/Shanghai
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
