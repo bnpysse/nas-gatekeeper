@@ -114,8 +114,41 @@ def is_substantive_content(title: str, text: str, min_chars: int = 100) -> bool:
         
     return True
 
-def save_to_vault(filename: str, content: str):
-    """保存笔记至 Obsidian Auto_Clippings 并实时同步到云端"""
+def enhance_with_rag_and_dual_links(title: str, content: str, filename: str) -> tuple:
+    """生成 Embedding 向量，并根据 Turso 相似度自动生成双向链接"""
+    try:
+        from services.rag import get_embedding, search_similar_notes, init_db
+        import asyncio
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        async def _do_rag():
+            await init_db()
+            embedding = await get_embedding(content)
+            similar_notes = []
+            if embedding:
+                similar_notes = await search_similar_notes(embedding, limit=3)
+            return embedding, similar_notes
+            
+        embedding, similar_notes = loop.run_until_complete(_do_rag())
+        loop.close()
+        
+        if similar_notes:
+            valid_similars = [n for n in similar_notes if n.get("id") != filename and n.get("title") != title]
+            if valid_similars:
+                content += "\n\n## 🔗 知识库双向关联\n"
+                for n in valid_similars:
+                    clean_target_title = re.sub(r'\[.*?\]', '', n.get("title", "")).strip(' _-')
+                    content += f"- [[{clean_target_title}]]\n"
+                    
+        return content, embedding
+    except Exception as e:
+        print(f"⚠️ RAG 双链生成跳过: {e}")
+        return content, []
+
+def save_to_vault(filename: str, content: str, title: str = ""):
+    """保存笔记至 Obsidian Auto_Clippings 并实时同步到云端与 Turso RAG 数据库"""
     body_lines = [
         l.strip() for l in content.splitlines() 
         if l.strip() and not l.startswith("---") and not l.startswith("title:") and not l.startswith("tags:") and not l.startswith("date:") and not l.startswith("rag_processed:")
@@ -124,18 +157,32 @@ def save_to_vault(filename: str, content: str):
         print(f"⚠️ 拦截空内容文件落库: {filename}")
         return
 
+    # 1. 向量化与双向链接生成
+    enhanced_content, embedding = enhance_with_rag_and_dual_links(title or filename, content, filename)
+
     os.makedirs(VAULT_PATH, exist_ok=True)
     file_path = os.path.join(VAULT_PATH, filename)
     with open(file_path, "w", encoding="utf-8") as f:
-        f.write(content)
+        f.write(enhanced_content)
     print(f"✅ 已保存至 Obsidian: {file_path}")
     
+    # 2. Turso 向量库入库
+    if embedding:
+        try:
+            from services.rag import upsert_note
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(upsert_note(filename, title or filename, str(file_path), enhanced_content, embedding))
+            loop.close()
+        except Exception as e:
+            print(f"⚠️ Turso 向量入库异常: {e}")
+
+    # 3. 云盘同步
     folder_name = "Auto_Clippings"
     try:
         import subprocess
-        print(f"☁️ 同步至 Google Drive ({folder_name})...")
         subprocess.run(["rclone", "copy", file_path, f"gdrive:{folder_name}/"], check=False)
-        print(f"☁️ 同步至 OneDrive ({folder_name})...")
         subprocess.run(["rclone", "copy", file_path, f"onedrive:应用/remotely-save/notes/{folder_name}/"], check=False)
     except Exception as e:
         print(f"⚠️ 云盘同步异常: {e}")
@@ -212,11 +259,11 @@ def process_youtube_entry(feed_name: str, entry):
     
     # 1. 保存原文/逐字稿
     raw_md = f"---\ntitle: \"{safe_title}_逐字稿\"\ndate: {date_str}\nurl: \"{video_url}\"\nsource: \"{feed_name}\"\ntags: [YT_逐字稿, 财经解读, {feed_name.replace(' ', '_')}]\n---\n\n{translated_text}"
-    save_to_vault(f"Raw_逐字稿_{safe_title}.md", raw_md)
+    save_to_vault(f"Raw_逐字稿_{safe_title}.md", raw_md, title=f"{safe_title}_逐字稿")
     
     # 2. 保存深度分析简报
     final_md = f"---\ntitle: \"{safe_title}_深度简报\"\ndate: {date_str}\nurl: \"{video_url}\"\nsource: \"{feed_name}\"\ntags: [YT_财经解读, 智能简报, {feed_name.replace(' ', '_')}]\n---\n\n{analysis}"
-    save_to_vault(f"Auto_简报_{safe_title}.md", final_md)
+    save_to_vault(f"Auto_简报_{safe_title}.md", final_md, title=f"{safe_title}_深度简报")
     
     mark_processed(video_id, "youtube")
 
@@ -248,10 +295,10 @@ def process_reddit_entry(feed_name: str, entry):
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     raw_md = f"---\ntitle: \"{safe_title}_全翻译\"\ndate: {date_str}\nurl: \"{url}\"\nsource: \"{feed_name}\"\ntags: [Reddit_全文翻译, {feed_name.replace('/', '_')}]\n---\n\n{translated_text}"
-    save_to_vault(f"Raw_翻译_{safe_title}.md", raw_md)
+    save_to_vault(f"Raw_翻译_{safe_title}.md", raw_md, title=f"{safe_title}_全翻译")
     
     final_md = f"---\ntitle: \"{safe_title}_简报\"\ndate: {date_str}\nurl: \"{url}\"\nsource: \"{feed_name}\"\ntags: [Reddit_热榜, {feed_name.replace('/', '_')}]\n---\n\n{analysis}"
-    save_to_vault(f"Auto_简报_{safe_title}.md", final_md)
+    save_to_vault(f"Auto_简报_{safe_title}.md", final_md, title=f"{safe_title}_简报")
     
     mark_processed(video_id, "reddit")
 
@@ -282,10 +329,10 @@ def process_substack_entry(feed_name: str, entry):
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     raw_md = f"---\ntitle: \"{safe_title}_全翻译\"\ndate: {date_str}\nurl: \"{url}\"\nsource: \"{feed_name}\"\ntags: [大咖视点_全文翻译, {feed_name.replace(' ', '_')}]\n---\n\n{translated_text}"
-    save_to_vault(f"Raw_翻译_{safe_title}.md", raw_md)
+    save_to_vault(f"Raw_翻译_{safe_title}.md", raw_md, title=f"{safe_title}_全翻译")
     
     final_md = f"---\ntitle: \"{safe_title}_简报\"\ndate: {date_str}\nurl: \"{url}\"\nsource: \"{feed_name}\"\ntags: [大咖视点_深度解读, {feed_name.replace(' ', '_')}]\n---\n\n{analysis}"
-    save_to_vault(f"Auto_简报_{safe_title}.md", final_md)
+    save_to_vault(f"Auto_简报_{safe_title}.md", final_md, title=f"{safe_title}_简报")
     
     mark_processed(video_id, "substack")
 
@@ -311,7 +358,7 @@ def process_github_trending():
             if is_processed(repo_id):
                 continue
                 
-            repo_full_url = f"https://github.com{repo_path}"
+            repo_full_url = f"https://github{repo_path}"
             print(f"🔥 发现新的 Github 榜单项目: {repo_path}")
             
             readme_url = f"https://raw.githubusercontent.com{repo_path}/master/README.md"
@@ -336,12 +383,14 @@ def process_github_trending():
             date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             raw_md = f"---\ntitle: \"{safe_title}_全翻译\"\ndate: {date_str}\nurl: \"{repo_full_url}\"\ntags: [Github_Trending, 全文翻译]\n---\n\n{translated_text}"
-            save_to_vault(f"Raw_翻译_Github_{safe_title}.md", raw_md)
+            save_to_vault(f"Raw_翻译_Github_{safe_title}.md", raw_md, title=f"Github_{safe_title}_全翻译")
             
             final_md = f"---\ntitle: \"{safe_title}_简报\"\ndate: {date_str}\nurl: \"{repo_full_url}\"\ntags: [Github_Trending, 深度解读]\n---\n\n{analysis}"
-            save_to_vault(f"Auto_简报_Github_{safe_title}.md", final_md)
+            save_to_vault(f"Auto_简报_Github_{safe_title}.md", final_md, title=f"Github_{safe_title}_简报")
             
             mark_processed(repo_id, "github")
+    except Exception as e:
+        print(f"⚠️ Github 榜单获取失败: {e}")
     except Exception as e:
         print(f"⚠️ Github 榜单获取失败: {e}")
 

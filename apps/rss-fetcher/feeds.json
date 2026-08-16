@@ -80,6 +80,66 @@
         "type": "youtube"
     },
     {
+        "name": "Noahpinion (Noah Smith 宏观智库)",
+        "url": "https://www.noahpinion.blog/feed",
+        "type": "substack"
+    },
+    {
+        "name": "The Macro Compass (Alf 宏观流动性与资产配置)",
+        "url": "https://themacrocompass.substack.com/feed",
+        "type": "substack"
+    },
+    {
+        "name": "Doomberg (大宗商品与能源宏观智库)",
+        "url": "https://doomberg.substack.com/feed",
+        "type": "substack"
+    },
+    {
+        "name": "Apricitas Economics (宏观劳动力与通胀数据)",
+        "url": "https://www.apricitas.io/feed",
+        "type": "substack"
+    },
+    {
+        "name": "The Last Bear Standing (深度信贷与影子银行)",
+        "url": "https://thelastbearstanding.substack.com/feed",
+        "type": "substack"
+    },
+    {
+        "name": "Net Interest (金融机构与银行业深度拆解)",
+        "url": "https://www.netinterest.co/feed",
+        "type": "substack"
+    },
+    {
+        "name": "Young Money (投资心理学与商业洞察)",
+        "url": "https://www.youngmoney.co/feed",
+        "type": "substack"
+    },
+    {
+        "name": "SemiAnalysis (全球半导体产业链与AI算力)",
+        "url": "https://newsletter.semianalysis.com/feed",
+        "type": "substack"
+    },
+    {
+        "name": "Morgan Stanley Insights",
+        "url": "https://www.morganstanley.com/ideas.rss",
+        "type": "substack"
+    },
+    {
+        "name": "The Pragmatic Engineer",
+        "url": "https://blog.pragmaticengineer.com/rss/",
+        "type": "substack"
+    },
+    {
+        "name": "Lenny's Newsletter",
+        "url": "https://www.lennysnewsletter.com/feed",
+        "type": "substack"
+    },
+    {
+        "name": "Stratechery",
+        "url": "https://stratechery.com/feed/",
+        "type": "substack"
+    },
+    {
         "name": "ChinaTalk",
         "url": "https://www.chinatalk.media/feed",
         "type": "substack"
@@ -97,36 +157,6 @@
     {
         "name": "Latent Space",
         "url": "https://www.latent.space/feed",
-        "type": "substack"
-    },
-    {
-        "name": "SemiAnalysis",
-        "url": "https://newsletter.semianalysis.com/feed",
-        "type": "substack"
-    },
-    {
-        "name": "Morgan Stanley Insights",
-        "url": "https://www.morganstanley.com/ideas.rss",
-        "type": "substack"
-    },
-    {
-        "name": "Noahpinion (Economics)",
-        "url": "https://www.noahpinion.blog/feed",
-        "type": "substack"
-    },
-    {
-        "name": "The Pragmatic Engineer",
-        "url": "https://blog.pragmaticengineer.com/rss/",
-        "type": "substack"
-    },
-    {
-        "name": "Lenny's Newsletter",
-        "url": "https://www.lennysnewsletter.com/feed",
-        "type": "substack"
-    },
-    {
-        "name": "Stratechery",
-        "url": "https://stratechery.com/feed/",
         "type": "substack"
     },
     {

@@ -81,9 +81,22 @@ def sanitize_for_mdx(content: str) -> str:
         # 3. 转换 Obsidian 高亮 ==text== 为 <mark>text</mark>
         processed = re.sub(r'==([^=]+)==', r'<mark>\1</mark>', processed)
         
-        # 4. 转换 Obsidian 双链 [[Note Name|Display]] -> Display
-        processed = re.sub(r'\[\[([^\]|]+)\|([^\]]+)\]\]', r'\2', processed)
-        processed = re.sub(r'\[\[([^\]]+)\]\]', r'\1', processed)
+        # 4. 转换 Obsidian 双链 [[Note Name|Display]] -> [Display](/auto-clippings/note-name)
+        def _repl_wikilink_pipe(m):
+            target = m.group(1).strip()
+            disp = m.group(2).strip()
+            slug = make_safe_filename(target)
+            cat = "auto-summary" if "Daily" in target or "综合" in target else ("inbox" if target.startswith("[") or "Inbox" in target else "auto-clippings")
+            return f"[{disp}](/{cat}/{slug})"
+
+        def _repl_wikilink_simple(m):
+            target = m.group(1).strip()
+            slug = make_safe_filename(target)
+            cat = "auto-summary" if "Daily" in target or "综合" in target else ("inbox" if target.startswith("[") or "Inbox" in target else "auto-clippings")
+            return f"[{target}](/{cat}/{slug})"
+
+        processed = re.sub(r'\[\[([^\]|]+)\|([^\]]+)\]\]', _repl_wikilink_pipe, processed)
+        processed = re.sub(r'\[\[([^\]]+)\]\]', _repl_wikilink_simple, processed)
 
         # 5. 移除 Obsidian 注释 %% ... %% 和 块引用 ^id
         processed = re.sub(r'%%.*?%%', '', processed)
