@@ -129,6 +129,13 @@ def sync_obsidian_to_nextra(vault_dir: Path, nextra_dir: Path):
     pages_dir = nextra_dir / "pages"
     pages_dir.mkdir(parents=True, exist_ok=True)
 
+    # 彻底清理所有历史遗留的 _meta.json (Nextra 3.x 强校验禁止此文件)
+    for old_json in pages_dir.rglob("_meta.json"):
+        try:
+            old_json.unlink()
+        except Exception:
+            pass
+
     print(f"🚀 开始将 Obsidian 知识库同步至 Nextra: {vault_dir} ➔ {pages_dir}")
 
     # 需要发布的分类与目录映射
