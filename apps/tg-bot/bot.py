@@ -171,6 +171,19 @@ async def send_or_edit_long_message(message, text: str, parse_mode="Markdown"):
             except Exception:
                 await message.reply_text(chunk)
 
+def extract_brief_summary(full_content: str, max_chars: int = 600) -> str:
+    """从完整多模型研报中提取精简的核心结论，供 Telegram 聊天框优雅展示，避免长文刷屏与字符溢出"""
+    if not full_content:
+        return ""
+    clean = re.sub(r'## 🎙️ 语音转写原文[\s\S]*$', '', full_content)
+    clean = re.sub(r'### 网页原始抓取正文[\s\S]*$', '', clean)
+    clean = re.sub(r'## 🔗 知识库双向关联[\s\S]*$', '', clean)
+    clean = clean.strip()
+    
+    if len(clean) > max_chars:
+        clean = clean[:max_chars].rstrip() + "...\n\n*(💡 完整万字逐字稿与双模型深度研报已同步至 Google Drive & Obsidian)*"
+    return clean
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理消息路由，附带实时数字编号链路看板"""
     if not check_permission(update):
@@ -195,7 +208,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await tracker.step(3, "语音文件已提取", "OK", f"音轨大小: {audio_path.stat().st_size // 1024} KB")
             await tracker.step(4, "正在语音转文字", "RUNNING", "调用阿里云 SenseVoice-V1 极速识别中...")
             
-            # 回调用于阶段更新
             result = await analyze_audio_with_sensevoice_and_multi_stream(audio_path, video_title)
             await tracker.step(4, "语音转文字完成", "OK", "文字逐字稿已就绪")
 
@@ -219,21 +231,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
 
             final_response = (
-                f"🎉 *多模型音视频分析完成！*\n\n"
-                f"📌 **标题**: {video_title}\n"
+                f"🎉 *多模型音视频分析与归档完成！*\n\n"
+                f"📌 **标题**: 《{video_title}》\n"
                 f"📁 **归档文件**: `{note_path.name}`\n"
-                f"☁️ **云端同步**: 已安全同步至 Google Drive & OneDrive\n\n"
+                f"☁️ **云端同步**: 完整逐字稿与研报已同步至 Google Drive & OneDrive\n\n"
                 f"📋 **完整执行工作流**:\n"
                 f"{tracker.get_summary_trace()}\n\n"
                 f"---\n\n"
-                f"{result['content']}"
+                f"{extract_brief_summary(result['content'])}"
             )
             await send_or_edit_long_message(msg, final_response)
 
         except Exception as e:
             # 如果音频提取失败（说明是纯文字帖子、微头条或视频加密），平滑切换为图文解析
-            logger.info(f"音轨提取未命中或加密受限，自动平滑切换为【图文/文章】抓取模式: {e}")
-            await tracker.step(2, "音视频提取受限", "WARN", f"{e}")
+            err_short = str(e)[:60].replace("\n", " ")
+            logger.info(f"音轨提取未命中或加密受限，自动平滑切换为【图文/文章】抓取模式: {err_short}")
+            await tracker.step(2, "音视频提取受限", "WARN", f"{err_short}")
             await tracker.step(3, "模式自动切换", "OK", "无缝启动【网页正文深度解析】")
 
             try:
@@ -253,20 +266,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await tracker.step(6, "知识库归档完成", "OK", f"`{note_path.name}`")
 
                 final_response = (
-                    f"🎉 *多模型图文分析完成！*\n\n"
-                    f"📌 **标题**: {ai_result['title']}\n"
+                    f"🎉 *多模型图文分析与归档完成！*\n\n"
+                    f"📌 **标题**: 《{ai_result['title']}》\n"
                     f"📁 **归档文件**: `{note_path.name}`\n"
-                    f"☁️ **云端同步**: 已安全同步至 Google Drive & OneDrive\n\n"
+                    f"☁️ **云端同步**: 全文已同步至 Google Drive & OneDrive\n\n"
                     f"📋 **完整执行工作流**:\n"
                     f"{tracker.get_summary_trace()}\n\n"
                     f"---\n\n"
-                    f"{ai_result['content']}"
+                    f"{extract_brief_summary(ai_result['content'])}"
                 )
                 await send_or_edit_long_message(msg, final_response)
 
             except Exception as web_err:
                 logger.error(f"图文解析失败: {web_err}")
-                await tracker.step(4, "正文抓取失败", "ERROR", f"`{web_err}`")
+                await tracker.step(4, "正文抓取失败", "ERROR", f"`{str(web_err)[:60]}`")
                 await msg.edit_text(f"❌ 链接处理失败:\n{tracker.get_summary_trace()}")
 
     # 2. 普通网页链接
@@ -292,18 +305,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             final_response = (
                 f"🎉 *网页归档与多模型分析完成！*\n\n"
-                f"📌 **标题**: {ai_result['title']}\n"
+                f"📌 **标题**: 《{ai_result['title']}》\n"
                 f"📁 **Obsidian**: `{note_path.name}`\n"
-                f"☁️ **云端同步**: 已同步至 Google Drive & OneDrive\n\n"
+                f"☁️ **云端同步**: 全文已同步至 Google Drive & OneDrive\n\n"
                 f"📋 **完整执行工作流**:\n"
                 f"{tracker.get_summary_trace()}\n\n"
                 f"---\n\n"
-                f"{ai_result['content']}"
+                f"{extract_brief_summary(ai_result['content'])}"
             )
             await send_or_edit_long_message(msg, final_response)
         except Exception as e:
             logger.error(f"处理网页失败: {e}")
-            await tracker.step(2, "网页解析失败", "ERROR", f"`{e}`")
+            await tracker.step(2, "网页解析失败", "ERROR", f"`{str(e)[:60]}`")
             await msg.edit_text(f"❌ 网页解析失败:\n{tracker.get_summary_trace()}")
 
     # 3. 普通纯文本
