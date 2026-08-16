@@ -5,15 +5,11 @@ export NO_PROXY="localhost,127.0.0.1,dashscope.aliyuncs.com,ark.cn-beijing.volce
 
 echo "=== Starting Crawl === $(date)" >> /var/log/secondbrain.log
 
-echo "⬇️ Syncing personal notes from OneDrive to N100..." >> /var/log/secondbrain.log
+echo "⬇️ Syncing notes from OneDrive to N100..." >> /var/log/secondbrain.log
 rclone sync onedrive:应用/remotely-save/notes/ /opt/obsidian-brain-data/ \
-  --filter "- Auto_Clippings/**" \
-  --filter "- Inbox/**" \
-  --filter "- Pictures/**" \
-  --filter "- TG_Clippings/**" \
-  --filter "- Auto_Summary/**" \
   --filter "- .obsidian/**" \
   --filter "- .git/**" \
+  --filter "- .trash/**" \
   --filter "- .gitkeep" \
   -v >> /var/log/secondbrain.log 2>&1
 
