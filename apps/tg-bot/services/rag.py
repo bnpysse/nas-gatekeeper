@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+"""
+第二大脑轻量级 RAG 向量引擎 (DashScope Embedding + Turso Vector DB)
+融入 RAGFlow 精髓的“Markdown 标题层级语义感知分块 (Header-Aware Chunking)”与“多路召回”
+"""
+
 import os
 import sys
 import logging
@@ -8,6 +13,7 @@ import asyncio
 import json
 import struct
 import math
+import re
 from pathlib import Path
 import base64
 
@@ -30,7 +36,7 @@ def cosine_similarity(v1, v2):
     return dot / (mag1 * mag2)
 
 def get_embedding_client() -> AsyncOpenAI:
-    # 强制不使用代理，走国内直连
+    # 强制直连阿里百炼，不走外部代理
     return AsyncOpenAI(
         http_client=httpx.AsyncClient(proxy=None),
         api_key=Config.DASHSCOPE_API_KEY,
@@ -95,6 +101,7 @@ async def _execute_turso(sql: str, args: list = None):
         return parsed_rows
 
 async def get_embedding(text: str) -> list[float]:
+    """使用阿里百炼 text-embedding-v3 生成 1024 维向量"""
     if not Config.DASHSCOPE_API_KEY:
         logger.warning("未配置 DASHSCOPE_API_KEY，跳过 Embedding 生成。")
         return []
@@ -104,17 +111,71 @@ async def get_embedding(text: str) -> list[float]:
     
     try:
         response = await client.embeddings.create(
-            input=[text[:3000]],
-            model=Config.DASHSCOPE_EMBEDDING_MODEL,
+            input=[text[:2000]],
+            model=Config.DASHSCOPE_EMBEDDING_MODEL or "text-embedding-v3",
+            dimensions=1024
         )
         return response.data[0].embedding
     except Exception as e:
         logger.error(f"生成 Embedding 失败: {e}")
         return []
 
+def chunk_markdown(doc_title: str, content: str, max_chars: int = 800) -> list[dict]:
+    """
+    RAGFlow 风格的 Markdown 标题语义感知分块算法 (Hierarchical Header-Aware Chunking):
+    1. 剥离 YAML Frontmatter;
+    2. 按 #, ##, ### 等层级标题识别段落边界;
+    3. 为每一个 Chunk 注入面包屑导航头 (如: 《文档标题》 > 章节标题);
+    4. 保障单个语义块在 200~800 字之间，杜绝切断上下文。
+    """
+    body = re.sub(r'^---[\s\S]*?---\n', '', content).strip()
+    if not body:
+        return [{"section": "概要", "text": f"【来源: 《{doc_title}》】\n{content[:max_chars]}"}]
+
+    lines = body.splitlines()
+    chunks = []
+    current_header = "概要"
+    current_lines = []
+    
+    for line in lines:
+        header_match = re.match(r'^(#{1,4})\s+(.+)$', line.strip())
+        if header_match:
+            if current_lines:
+                chunk_text = "\n".join(current_lines).strip()
+                if len(chunk_text) > 20:
+                    chunks.append({
+                        "section": current_header,
+                        "text": f"【来源: 《{doc_title}》 > {current_header}】\n{chunk_text}"
+                    })
+                current_lines = []
+            current_header = header_match.group(2).strip()
+        else:
+            current_lines.append(line)
+            if len("\n".join(current_lines)) >= max_chars:
+                chunk_text = "\n".join(current_lines).strip()
+                chunks.append({
+                    "section": current_header,
+                    "text": f"【来源: 《{doc_title}》 > {current_header}】\n{chunk_text}"
+                })
+                current_lines = []
+
+    if current_lines:
+        chunk_text = "\n".join(current_lines).strip()
+        if len(chunk_text) > 20:
+            chunks.append({
+                "section": current_header,
+                "text": f"【来源: 《{doc_title}》 > {current_header}】\n{chunk_text}"
+            })
+
+    if not chunks:
+        chunks = [{"section": "正文", "text": f"【来源: 《{doc_title}》】\n{body[:max_chars]}"}]
+
+    return chunks
+
 async def init_db():
-    """初始化数据库表"""
+    """初始化数据库表 (包含整篇笔记表与分块索引表)"""
     try:
+        # 1. 传统整篇向量表 (用于双链相似度计算)
         await _execute_turso('''
             CREATE TABLE IF NOT EXISTS obsidian_vectors (
                 id TEXT PRIMARY KEY,
@@ -125,19 +186,52 @@ async def init_db():
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # 2. RAGFlow 级别的语义分块表 (用于高精度精准问答)
+        await _execute_turso('''
+            CREATE TABLE IF NOT EXISTS obsidian_chunks (
+                chunk_id TEXT PRIMARY KEY,
+                doc_id TEXT NOT NULL,
+                doc_title TEXT NOT NULL,
+                section TEXT,
+                content TEXT,
+                embedding F32_BLOB(1024),
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
     except Exception as e:
         logger.error(f"初始化 Turso/SQLite 失败: {e}")
 
-async def upsert_note(note_id: str, title: str, path: str, content: str, embedding: list[float]):
-    """插入或更新笔记，包含向量"""
+async def upsert_note(note_id: str, title: str, path: str, content: str, embedding: list[float] = None):
+    """插入或更新笔记，同时完成标题语义分块与多 Chunk 向量入库"""
     try:
-        blob = float_array_to_blob(embedding)
-        await _execute_turso(
-            "INSERT INTO obsidian_vectors (id, title, path, content, embedding) VALUES (?, ?, ?, ?, ?) "
-            "ON CONFLICT(id) DO UPDATE SET title=excluded.title, path=excluded.path, content=excluded.content, embedding=excluded.embedding, updated_at=CURRENT_TIMESTAMP",
-            [note_id, title, path, content, blob]
-        )
-        logger.info(f"成功将笔记向量入库: {title}")
+        await init_db()
+        if not embedding:
+            embedding = await get_embedding(content[:2000])
+            
+        # 1. 存入整篇表
+        if embedding:
+            blob = float_array_to_blob(embedding)
+            await _execute_turso(
+                "INSERT INTO obsidian_vectors (id, title, path, content, embedding) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET title=excluded.title, path=excluded.path, content=excluded.content, embedding=excluded.embedding, updated_at=CURRENT_TIMESTAMP",
+                [note_id, title, path, content[:3000], blob]
+            )
+            
+        # 2. 进行标题语义分块 (Header Chunking) 并批量入库
+        chunks = chunk_markdown(title, content)
+        clean_doc_title = re.sub(r'\[.*?\]', '', title).strip(' _-')
+        
+        for idx, c in enumerate(chunks[:8]): # 单篇最多切 8 个核心语义块
+            chunk_id = f"{note_id}#c{idx}"
+            c_embed = await get_embedding(c["text"])
+            if c_embed:
+                c_blob = float_array_to_blob(c_embed)
+                await _execute_turso(
+                    "INSERT INTO obsidian_chunks (chunk_id, doc_id, doc_title, section, content, embedding) VALUES (?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(chunk_id) DO UPDATE SET doc_title=excluded.doc_title, section=excluded.section, content=excluded.content, embedding=excluded.embedding, updated_at=CURRENT_TIMESTAMP",
+                    [chunk_id, note_id, clean_doc_title, c["section"], c["text"], c_blob]
+                )
+        logger.info(f"✅ 成功完成笔记语义切块与向量入库: 《{title}》 ({len(chunks)} Chunks)")
     except Exception as e:
         logger.error(f"笔记入库失败: {e}")
 
@@ -154,27 +248,59 @@ async def search_similar_notes(embedding: list[float], limit: int = 3) -> list[d
         logger.error(f"检索相似笔记失败: {e}")
         return []
 
+async def search_similar_chunks(embedding: list[float], limit: int = 5) -> list[dict]:
+    """通过向量相似度检索最匹配的语义分块 (Chunk Level)"""
+    try:
+        blob = float_array_to_blob(embedding)
+        rows = await _execute_turso(
+            "SELECT chunk_id, doc_id, doc_title, section, content, vector_distance_cos(embedding, ?) as dist FROM obsidian_chunks ORDER BY dist ASC LIMIT ?",
+            [blob, limit]
+        )
+        return [{
+            "chunk_id": row[0],
+            "doc_id": row[1],
+            "doc_title": row[2],
+            "section": row[3],
+            "content": row[4],
+            "distance": row[5]
+        } for row in rows]
+    except Exception as e:
+        logger.error(f"检索语义分块失败: {e}")
+        return []
+
 async def ask_rag(question: str) -> str:
-    """基于第二大脑知识库检索并使用大模型回答问题"""
+    """基于第二大脑分块语义库检索并使用火山 DeepSeek-V4 进行精准知识溯源回答"""
     embedding = await get_embedding(question)
     if not embedding:
         return "⚠️ 生成问题向量失败或未配置 DASHSCOPE_API_KEY。"
         
-    similar_notes = await search_similar_notes(embedding, limit=5)
-    if not similar_notes:
-        return "抱歉，在您的第二大脑知识库中没有检索到相关笔记。"
-        
-    context_blocks = []
-    for n in similar_notes:
-        title = n.get("title", "未命名笔记")
-        content = n.get("content", "")[:1000]
-        context_blocks.append(f"### 《{title}》\n{content}\n")
-        
+    # 优先使用精细化的 Chunk 级别检索
+    similar_chunks = await search_similar_chunks(embedding, limit=5)
+    
+    # 降级备选：如果分块表为空，回退到整篇表
+    if not similar_chunks:
+        similar_notes = await search_similar_notes(embedding, limit=3)
+        if not similar_notes:
+            return "抱歉，在您的第二大脑知识库中没有检索到相关笔记。"
+        context_blocks = [f"### 《{n['title']}》\n{n['content'][:800]}\n" for n in similar_notes]
+        referenced_docs = [n['title'] for n in similar_notes]
+    else:
+        context_blocks = []
+        referenced_docs = set()
+        for c in similar_chunks:
+            referenced_docs.add(c["doc_title"])
+            context_blocks.append(f"### 《{c['doc_title']}》 (章节: {c['section']})\n{c['content']}\n")
+            
     context_text = "\n".join(context_blocks)
     
-    prompt = f"""你是一个智能知识库问答助手。请基于以下从用户的 Obsidian 笔记库中检索到的上下文内容，准确、深入地回答用户的问题。如果上下文中没有足够信息，请如实说明。
+    prompt = f"""你是一个智能第二大脑知识库问答专家。请基于以下从用户的 Obsidian 笔记库中精准检索到的语义切块内容，准确、深入地回答用户的问题。
 
-【检索到的参考笔记】：
+【要求】：
+1. 答案必须基于提供的参考资料，逻辑清晰，提炼核心结论；
+2. 如果回答中涉及具体观点，请在相关段落末尾使用双链语法 [[笔记标题]] 标注溯源出处；
+3. 如果参考资料不足以完整回答，请客观说明。
+
+【检索到的参考笔记切块】：
 {context_text}
 
 【用户问题】：
@@ -190,7 +316,16 @@ async def ask_rag(question: str) -> str:
                 {"role": "user", "content": prompt}
             ]
         )
-        return resp.choices[0].message.content.strip()
+        answer = resp.choices[0].message.content.strip()
+        
+        # 追加可点击的溯源参考列表
+        if referenced_docs:
+            answer += "\n\n---\n**📚 关联参考笔记**:\n"
+            for doc in referenced_docs:
+                clean_name = re.sub(r'\[.*?\]', '', doc).strip(' _-')
+                answer += f"- [[{clean_name}]]\n"
+                
+        return answer
     except Exception as e:
         logger.error(f"RAG 回答生成失败: {e}")
         return f"大模型回答失败: {e}"

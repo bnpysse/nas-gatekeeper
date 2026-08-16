@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import re
 import httpx
 from dotenv import load_dotenv
 from pathlib import Path
@@ -18,7 +19,6 @@ for p in env_paths:
 else:
     load_dotenv()
 
-
 VOLCENGINE_API_KEY = os.getenv("VOLCENGINE_API_KEY", "")
 VOLCENGINE_ENDPOINT_ID = os.getenv("VOLCENGINE_ENDPOINT_ID", "ep-20260809122445-td2g2")
 
@@ -32,12 +32,21 @@ def get_deepseek_client() -> OpenAI:
         http_client=httpx.Client(trust_env=False) # Bypass proxy if any
     )
 
+def is_primarily_chinese(text: str) -> bool:
+    """判断文本是否主要为中文"""
+    chinese_chars = len(re.findall(r'[\u4e00-\u9fa5]', text))
+    return chinese_chars > 30 and (chinese_chars / max(1, len(text[:500]))) > 0.2
+
 def translate_with_deepseek(text: str) -> str:
     if not text or not text.strip():
         return ""
         
+    # 如果原文主要已经是中文，直接保留原文，避免误触发中英翻译任务
+    if is_primarily_chinese(text):
+        return text
+        
     client = get_deepseek_client()
-    system_prompt = "你是一位专业的资深中英文翻译专家。你的任务是将用户提供的英文文本完美翻译为中文。为了保留英文原意，请直接返回'原文+中文翻译'的混合排版格式。即：一段英文，紧跟着一段对应的中文翻译。必须严格保留原文的Markdown符号及排版格式。"
+    system_prompt = "你是一位专业的资深中英文翻译专家。你的任务是将用户提供的英文文本完美翻译为中文。为了保留英文原意，请直接返回'原文+中文翻译'的混合排版格式。即：一段英文，紧跟着一段对应的中文翻译。必须严格保留原文的Markdown符号及排版格式。若输入本身已是中文，请原样返回。"
     prompt = f"请翻译以下文本：\n\n{text}"
     
     try:
@@ -97,9 +106,26 @@ def analyze_github_repo(repo_url: str, readme_content: str) -> tuple:
     return translated_text, summary
 
 def analyze_youtube_transcript(video_title: str, channel_name: str, video_url: str, transcript_text: str) -> tuple:
-    raw_text = transcript_text[:30000] # DeepSeek context window is large, but keep it safe
+    raw_text = transcript_text[:30000]
     translated_text = translate_with_deepseek(raw_text)
-    summary = generate_summary_with_deepseek(translated_text)
+    
+    prompt = f"""你是一个专业的情报与音视频内容分析专家。
+请阅读以下音视频逐字稿，撰写一份结构严密、洞察深刻的深度精读简报。
+
+视频标题：{video_title}
+频道来源：{channel_name}
+视频链接：{video_url}
+
+逐字稿内容：
+{translated_text[:15000]}
+
+要求：
+1. **🌟 核心要义 (TL;DR)**：用一段精炼的话总结视频的核心观点。
+2. **📈 关键论点与核心论据 (Key Takeaways)**：分条展开 3-5 个核心论点与数据案例。
+3. **💡 决策启示或行动建议 (Actionable Insights)**：对观众或投资者的核心启发。
+4. 使用 Markdown 格式。
+"""
+    summary = generate_summary_with_deepseek(prompt, is_raw_content=False)
     return translated_text, summary
 
 def analyze_reddit_post(title: str, sub_name: str, url: str, content: str) -> tuple:
