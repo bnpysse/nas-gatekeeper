@@ -71,37 +71,43 @@ def sanitize_for_mdx(content: str) -> str:
 
         processed = re.sub(r'<img\s+[^>]*?\/?>', img_replacer, processed, flags=re.IGNORECASE)
 
-        # 2. 移除所有 HTML 标签上的 style 属性（杜绝 React 字符串 style 崩溃）
-        processed = re.sub(r'\s+style=["\'][^"\']*["\']', '', processed, flags=re.IGNORECASE)
-
-        # 3. 转换 HTML 格式标签为标准 Markdown
+        # 2. 转换常见 HTML 格式标签为标准 Markdown
         processed = re.sub(r'<\/?(em|i)\b[^>]*>', '*', processed, flags=re.IGNORECASE)
         processed = re.sub(r'<\/?(strong|b)\b[^>]*>', '**', processed, flags=re.IGNORECASE)
         processed = re.sub(r'<br\s*\/?>', '  \n', processed, flags=re.IGNORECASE)
         processed = re.sub(r'<hr\s*\/?>', '\n---\n', processed, flags=re.IGNORECASE)
+        processed = re.sub(r'<\/?(table|thead|tbody|tfoot|tr|th|td)\b[^>]*>', '', processed, flags=re.IGNORECASE)
 
-        # 4. 转换 Obsidian 高亮 ==text== 为 <mark>text</mark>
+        # 3. 转换 Obsidian 高亮 ==text== 为 <mark>text</mark>
         processed = re.sub(r'==([^=]+)==', r'<mark>\1</mark>', processed)
         
-        # 5. 转换 Obsidian 双链 [[Note Name|Display]] -> Display
+        # 4. 转换 Obsidian 双链 [[Note Name|Display]] -> Display
         processed = re.sub(r'\[\[([^\]|]+)\|([^\]]+)\]\]', r'\2', processed)
         processed = re.sub(r'\[\[([^\]]+)\]\]', r'\1', processed)
 
-        # 6. 移除 Obsidian 注释 %% ... %% 和 块引用 ^id
+        # 5. 移除 Obsidian 注释 %% ... %% 和 块引用 ^id
         processed = re.sub(r'%%.*?%%', '', processed)
         processed = re.sub(r'\s*\^[a-zA-Z0-9_-]+$', '', processed)
 
-        # 7. 转义破坏 JSX 的所有非安全 HTML 标签与尖括号
-        def tag_replacer(m):
-            full = m.group(0)
-            if re.match(r'^<\/?(mark|code)(\s+[^>]*)?>$', full, re.IGNORECASE):
-                return full
-            return full.replace("<", "&lt;").replace(">", "&gt;")
+        # 6. 防范 JS import / export 语句被 acorn / MDX 解析
+        if re.match(r'^\s*import\s+', processed):
+            processed = re.sub(r'^(\s*)import\s+', r'\1&#105;mport ', processed)
+        if re.match(r'^\s*export\s+', processed):
+            processed = re.sub(r'^(\s*)export\s+', r'\1&#101;xport ', processed)
 
-        processed = re.sub(r'<[^>]*>', tag_replacer, processed)
-        # 转义孤立的 '<' (如 '< 20%', '<= 100', '<|Speech|>')
-        processed = re.sub(r'<(?=[^a-zA-Z\/])', '&lt;', processed)
-        processed = processed.replace("<|", "&lt;|").replace("|>", "|&gt;")
+        # 7. 转义除配对 <mark> 以外的所有剩余 HTML 标签与尖括号 (包括未闭合的 </tr, <table, <| 等)
+        marks = []
+        def mark_saver(m):
+            marks.append(m.group(0))
+            return f"__MARK_TAG_{len(marks)-1}__"
+        processed = re.sub(r'<mark>.*?</mark>', mark_saver, processed)
+
+        # 将所有未保护的 '<' 和 '>' 转换为 HTML 实体，彻底杜绝 JSX 编译器报错
+        processed = processed.replace("<", "&lt;").replace(">", "&gt;")
+
+        # 还原安全的 <mark> 标签
+        for idx, mark in enumerate(marks):
+            processed = processed.replace(f"__MARK_TAG_{idx}__", mark)
 
         # 8. 转义未在行内代码中的孤立大括号
         if "{" in processed or "}" in processed:
