@@ -288,8 +288,11 @@ def download_audio_from_url(
 
     # 头条国内直连，YouTube/Twitter 走代理
     is_foreign = any(d in target_url for d in ["youtube", "youtu.be", "twitter", "x.com"])
+    is_youtube = "youtube" in target_url or "youtu.be" in target_url
     proxy_args = ["--proxy", Config.HTTP_PROXY] if (is_foreign and Config.HTTP_PROXY) else []
     ffmpeg_args = ["--ffmpeg-location", ffmpeg_bin] if ffmpeg_bin else []
+    extractor_args = ["--extractor-args", "youtube:player_client=android,web"] if is_youtube else []
+    ua_args = [] if is_youtube else ["--user-agent", DESKTOP_UA]
 
     # Cookie 认证（仅头条/西瓜等字节系平台使用专属 cookies.txt，避免污染 YouTube 等海外平台）
     cookies_path = find_cookies_file()
@@ -301,10 +304,9 @@ def download_audio_from_url(
         title_cmd = [
             ytdlp_bin,
             "--no-playlist",
-            "--user-agent", DESKTOP_UA,
             "--get-title",
             "--no-warnings",
-        ] + cookies_args + proxy_args + [target_url]
+        ] + ua_args + cookies_args + proxy_args + extractor_args + [target_url]
 
         title_result = subprocess.run(
             title_cmd,
@@ -326,13 +328,12 @@ def download_audio_from_url(
         "-f", "ba/b",
         "-x",
         "--no-playlist",
-        "--user-agent", DESKTOP_UA,
         "--audio-format", "m4a",
         "--audio-quality", "0",
         "--no-cache-dir",
         "--output", output_template,
         "--no-warnings",
-    ] + ffmpeg_args + cookies_args + proxy_args + [target_url]
+    ] + ua_args + ffmpeg_args + cookies_args + proxy_args + extractor_args + [target_url]
 
     logger.info(f"yt-dlp 开始提取音轨: {target_url}")
     try:
