@@ -394,6 +394,19 @@ def process_github_trending():
     except Exception as e:
         print(f"⚠️ Github 榜单获取失败: {e}")
 
+def fetch_and_parse_feed(url: str):
+    """使用浏览器 UA 拉取 RSS 内容，防止 Substack 等平台因 User-Agent 被 Cloudflare 拦截"""
+    try:
+        req = urllib.request.Request(
+            url, 
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            content = resp.read()
+            return feedparser.parse(content)
+    except Exception:
+        return feedparser.parse(url, agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+
 def run_rss_fetcher():
     print("🚀 Gatekeeper 全球顶级财经与科技多源 RSS 自动提炼引擎启动！")
     try:
@@ -408,7 +421,7 @@ def run_rss_fetcher():
         for url in feed["urls"]:
             print(f"📡 正在拉取: {feed['name']} ({url})")
             try:
-                parsed_feed = feedparser.parse(url)
+                parsed_feed = fetch_and_parse_feed(url)
                 count = 0
                 limit = 1 if "top/.rss" in url else (3 if feed["type"] == "youtube" else 5)
                 
