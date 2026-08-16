@@ -1,7 +1,82 @@
 [
     {
+        "name": "小lin说",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UClq1oF_XReK0VrtzDr-2udA",
+        "type": "youtube"
+    },
+    {
+        "name": "巫师财经",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC55ahPQ7m5iJdVWcOfmuE6g",
+        "type": "youtube"
+    },
+    {
+        "name": "王剑每日观察",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC8UCbiPrm2zN9nZHKdTevZA",
+        "type": "youtube"
+    },
+    {
+        "name": "Principles by Ray Dalio",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCqvaXJ1K3HheTPNjH-KpwXQ",
+        "type": "youtube"
+    },
+    {
+        "name": "Patrick Boyle",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCASM0cgfkJxQ1ICmRilfHLw",
+        "type": "youtube"
+    },
+    {
+        "name": "The Plain Bagel",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCFCEuCsyWP0YkP3CZ3Mr01Q",
+        "type": "youtube"
+    },
+    {
+        "name": "Ben Felix (Rational Reminder)",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCOErWFfNOQzXsgE7f5S_ULw",
+        "type": "youtube"
+    },
+    {
+        "name": "Economics Explained",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCVWX3F3DrTvDKa0LRilQoQQ",
+        "type": "youtube"
+    },
+    {
+        "name": "All-In Podcast",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCESLZhusAkFfsNsApnjF_Cg",
+        "type": "youtube"
+    },
+    {
+        "name": "Forward Guidance",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC0E-St9TloQ7TAu8hn1xJ9w",
+        "type": "youtube"
+    },
+    {
+        "name": "Real Vision Finance",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCBH5VZE_Y4F3CMcPIzPEB5A",
+        "type": "youtube"
+    },
+    {
+        "name": "CNBC Television",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCvJJ_dzjViJCoLf5uKUTwoA",
+        "type": "youtube"
+    },
+    {
         "name": "Marques Brownlee",
         "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ",
+        "type": "youtube"
+    },
+    {
+        "name": "AI Explained",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCNJ1Ymd5yWuZZxgIE3t2E3g",
+        "type": "youtube"
+    },
+    {
+        "name": "Fireship",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCsBjURrPoezykLs9EqgamOA",
+        "type": "youtube"
+    },
+    {
+        "name": "Two Minute Papers",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCbfYPyITQ-7l4upoX8nvctg",
         "type": "youtube"
     },
     {
@@ -30,8 +105,28 @@
         "type": "substack"
     },
     {
-        "name": "The Wondrous Mind of Dereck Bearsong",
-        "url": "https://dereckbearsong.substack.com/feed",
+        "name": "Morgan Stanley Insights",
+        "url": "https://www.morganstanley.com/ideas.rss",
+        "type": "substack"
+    },
+    {
+        "name": "Noahpinion (Economics)",
+        "url": "https://www.noahpinion.blog/feed",
+        "type": "substack"
+    },
+    {
+        "name": "The Pragmatic Engineer",
+        "url": "https://blog.pragmaticengineer.com/rss/",
+        "type": "substack"
+    },
+    {
+        "name": "Lenny's Newsletter",
+        "url": "https://www.lennysnewsletter.com/feed",
+        "type": "substack"
+    },
+    {
+        "name": "Stratechery",
+        "url": "https://stratechery.com/feed/",
         "type": "substack"
     },
     {
@@ -47,6 +142,26 @@
     {
         "name": "r/hardware",
         "url": "https://www.reddit.com/r/hardware/top/.rss?t=day",
+        "type": "reddit"
+    },
+    {
+        "name": "r/SecurityAnalysis",
+        "url": "https://www.reddit.com/r/SecurityAnalysis/top/.rss?t=day",
+        "type": "reddit"
+    },
+    {
+        "name": "r/Economics",
+        "url": "https://www.reddit.com/r/Economics/top/.rss?t=day",
+        "type": "reddit"
+    },
+    {
+        "name": "r/investing",
+        "url": "https://www.reddit.com/r/investing/top/.rss?t=day",
+        "type": "reddit"
+    },
+    {
+        "name": "r/wallstreetbets",
+        "url": "https://www.reddit.com/r/wallstreetbets/top/.rss?t=day",
         "type": "reddit"
     }
 ]
