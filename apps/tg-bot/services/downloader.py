@@ -291,9 +291,9 @@ def download_audio_from_url(
     proxy_args = ["--proxy", Config.HTTP_PROXY] if (is_foreign and Config.HTTP_PROXY) else []
     ffmpeg_args = ["--ffmpeg-location", ffmpeg_bin] if ffmpeg_bin else []
 
-    # Cookie 认证
+    # Cookie 认证（仅头条/西瓜等字节系平台使用专属 cookies.txt，避免污染 YouTube 等海外平台）
     cookies_path = find_cookies_file()
-    cookies_args = ["--cookies", str(cookies_path)] if cookies_path else []
+    cookies_args = ["--cookies", str(cookies_path)] if (cookies_path and is_toutiao) else []
 
     # Step 1: 获取视频标题
     video_title = f"视频_{file_id}"
