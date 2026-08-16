@@ -5,7 +5,10 @@
 SecondBrain-Flow 主服务入口：Telegram Bot 异步调度服务
 """
 
+import os
+import re
 import sys
+import json
 import logging
 from pathlib import Path
 
