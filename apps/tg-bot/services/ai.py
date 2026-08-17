@@ -56,13 +56,14 @@ def get_volcengine_async_client() -> AsyncOpenAI:
         base_url="https://ark.cn-beijing.volces.com/api/v3"
     )
 
-def transcribe_audio_sensevoice(audio_path: Path) -> str:
-    """使用阿里云百炼 DashScope Files + SenseVoice-V1 进行极速高保真语音识别"""
-    logger.info(f"开始使用阿里云 SenseVoice-V1 转录音频: {audio_path}")
+def transcribe_audio_sensevoice(audio_path: Path, preferred_models: list = None) -> str:
+    """使用阿里云百炼 DashScope 智能多模型级联进行语音识别 (首选 paraformer-v2 -> paraformer-v1 -> sensevoice-v1)"""
     import dashscope
     from dashscope.audio.asr import Transcription
 
     dashscope.api_key = Config.DASHSCOPE_API_KEY
+    if preferred_models is None:
+        preferred_models = ["paraformer-v2", "paraformer-v1", "sensevoice-v1"]
 
     # 1. 上传音频到百炼 Files 临时存储
     upload_res = dashscope.Files.upload(file_path=str(audio_path), purpose="inference")
@@ -77,27 +78,40 @@ def transcribe_audio_sensevoice(audio_path: Path) -> str:
         if not file_url:
             raise RuntimeError("未能获取到 DashScope 音频文件访问链接")
 
-        # 3. 提交 SenseVoice-V1 识别任务
-        task = Transcription.async_call(
-            model="sensevoice-v1",
-            file_urls=[file_url]
-        )
-        if task.status_code != 200:
-            raise RuntimeError(f"SenseVoice 任务提交失败: {task.message}")
+        last_error = None
+        for model in preferred_models:
+            logger.info(f"🎙️ 正在尝试调用百炼 ASR 模型 [{model}] 进行语音识别...")
+            try:
+                task = Transcription.async_call(
+                    model=model,
+                    file_urls=[file_url],
+                    language_hints=['zh', 'en']
+                )
+                if task.status_code != 200:
+                    logger.warning(f"模型 [{model}] 提交失败: {task.message}，尝试下一模型...")
+                    last_error = task.message
+                    continue
 
-        # 4. 等待转录完成
-        result = Transcription.wait(task=task.output.task_id)
-        if result.status_code != 200 or result.output.get("task_status") != "SUCCEEDED":
-            raise RuntimeError(f"SenseVoice 识别未成功: {result.output}")
+                result = Transcription.wait(task=task.output.task_id)
+                if result.status_code != 200 or result.output.get("task_status") != "SUCCEEDED":
+                    logger.warning(f"模型 [{model}] 转录未成功: {result.output}，尝试下一模型...")
+                    last_error = str(result.output)
+                    continue
 
-        trans_url = result.output["results"][0]["transcription_url"]
-        data = requests.get(trans_url, timeout=30).json()
-        transcripts = data.get("transcripts", [])
-        raw_text = "".join([t.get("text", "") for t in transcripts])
-        cleaned_text = re.sub(r"<\|[^|]+\|>", "", raw_text).strip()
+                trans_url = result.output["results"][0]["transcription_url"]
+                data = requests.get(trans_url, timeout=30).json()
+                transcripts = data.get("transcripts", [])
+                raw_text = "".join([t.get("text", "") for t in transcripts])
+                cleaned_text = re.sub(r"<\|[^|]+\|>", "", raw_text).strip()
 
-        logger.info(f"SenseVoice-V1 转录成功，共识别 {len(cleaned_text)} 字")
-        return cleaned_text
+                logger.info(f"✅ 模型 [{model}] 转录成功！共识别 {len(cleaned_text)} 字")
+                return cleaned_text
+            except Exception as e:
+                logger.warning(f"模型 [{model}] 执行异常: {e}，尝试下一模型...")
+                last_error = str(e)
+                continue
+
+        raise RuntimeError(f"所有 ASR 模型转录均失败，最后错误: {last_error}")
     finally:
         try:
             dashscope.Files.delete(file_id=file_id)
