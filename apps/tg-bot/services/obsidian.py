@@ -134,4 +134,15 @@ status: unread
     except Exception as e:
         logger.warning(f"云盘同步异常: {e}")
 
+    # 4. 实时镜像到 Quartz 目录以触发即时构建
+    try:
+        quartz_inbox = Path("/opt/SecondBrain-Quartz/content/notes/Inbox")
+        if quartz_inbox.parent.exists():
+            quartz_inbox.mkdir(parents=True, exist_ok=True)
+            import shutil
+            shutil.copy2(file_path, quartz_inbox / filename)
+            logger.info(f"✨ 已实时镜像至 Quartz 笔记目录: {quartz_inbox / filename}")
+    except Exception as q_err:
+        logger.warning(f"Quartz 镜像异常: {q_err}")
+
     return file_path
