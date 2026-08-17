@@ -89,14 +89,19 @@ async def save_to_obsidian_inbox(title: str, url: str, content: str, source_type
     
     yaml_header = f"""---
 title: {safe_title}
+date: "{now_str}"
+created: "{now_str}"
+modified: "{now_str}"
+published: "{now_str}"
 url: {safe_url}
 source: {safe_source}
-captured_at: {now_str}
+captured_at: "{now_str}"
 tags:
   - inbox/capture
   - source/{source_type.lower()}
 status: unread
----\n
+---
+\n
 # {title}\n
 > [!NOTE] 捕获元数据
 > - **来源**: [{source_type}]({url})

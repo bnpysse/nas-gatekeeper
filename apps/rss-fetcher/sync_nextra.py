@@ -142,6 +142,26 @@ def make_safe_filename(name: str) -> str:
         name = name[:50].rstrip('-')
     return name or "note"
 
+def extract_file_timestamp(md_file: Path) -> str:
+    """提取文件的准确排序时间戳（优先从文件名、Frontmatter 提取，保证从最新到最旧严格倒序排列）"""
+    try:
+        stem = md_file.stem
+        m = re.search(r'(\d{8}(?:_\d{4})?)', stem)
+        if m:
+            return m.group(1).replace("_", "")
+        
+        content = md_file.read_text(encoding="utf-8", errors="ignore")[:600]
+        for line in content.splitlines():
+            if line.startswith("date:") or line.startswith("created:") or line.startswith("captured_at:"):
+                val = re.sub(r'[\'\"`\s-:]', '', line.split(":", 1)[1])
+                if len(val) >= 8:
+                    return val[:12]
+        
+        from datetime import datetime
+        return datetime.fromtimestamp(md_file.stat().st_mtime).strftime("%Y%m%d%H%M")
+    except Exception:
+        return "197001010000"
+
 def sync_obsidian_to_nextra(vault_dir: Path, nextra_dir: Path):
     """全量构建 Nextra 文档库"""
     import json
@@ -182,7 +202,11 @@ def sync_obsidian_to_nextra(vault_dir: Path, nextra_dir: Path):
         cat_meta = {}
         file_count = 0
 
-        for md_file in sorted(src_folder.glob("*.md")):
+        # 按时间戳从最新到最旧降序排列 (新文章排在最前面)
+        all_md_files = list(src_folder.glob("*.md"))
+        all_md_files.sort(key=lambda f: (extract_file_timestamp(f), f.name), reverse=True)
+
+        for md_file in all_md_files:
             try:
                 content = md_file.read_text(encoding="utf-8", errors="ignore")
                 # 检查实质内容有效性
