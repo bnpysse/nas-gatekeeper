@@ -10,7 +10,12 @@ from pathlib import Path
 # 配置代理与运行环境
 os.environ['HTTP_PROXY'] = 'http://192.168.2.3:7890'
 os.environ['HTTPS_PROXY'] = 'http://192.168.2.3:7890'
+os.environ['http_proxy'] = 'http://192.168.2.3:7890'
+os.environ['https_proxy'] = 'http://192.168.2.3:7890'
+os.environ['ALL_PROXY'] = 'http://192.168.2.3:7890'
+os.environ['all_proxy'] = 'http://192.168.2.3:7890'
 os.environ['NO_PROXY'] = 'localhost,127.0.0.1,dashscope.aliyuncs.com,ark.cn-beijing.volces.com'
+os.environ['no_proxy'] = 'localhost,127.0.0.1,dashscope.aliyuncs.com,ark.cn-beijing.volces.com'
 
 project_root = str(Path(__file__).resolve().parent.parent.parent)
 tg_bot_dir = str(Path(__file__).resolve().parent.parent / "tg-bot")
@@ -19,6 +24,7 @@ if project_root not in sys.path:
 if tg_bot_dir not in sys.path:
     sys.path.insert(0, tg_bot_dir)
 
+import requests
 import feedparser
 import bs4
 from database import is_processed, mark_processed, init_db
@@ -178,28 +184,33 @@ def save_to_vault(filename: str, content: str, title: str = ""):
         except Exception as e:
             print(f"⚠️ Turso 向量入库异常: {e}")
 
-    # 3. 云盘同步
-    folder_name = "Auto_Clippings"
-    try:
-        import subprocess
-        subprocess.run(["rclone", "copy", file_path, f"gdrive:{folder_name}/"], check=False)
-        subprocess.run(["rclone", "copy", file_path, f"onedrive:应用/remotely-save/notes/{folder_name}/"], check=False)
-    except Exception as e:
-        print(f"⚠️ 云盘同步异常: {e}")
-
 def get_youtube_transcript(video_id: str) -> str:
     """优先使用 YouTube 官方字幕接口获取中/英文字幕"""
     try:
         transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        try:
-            transcript = transcript_list.find_transcript(['zh-Hans', 'zh-Hant', 'zh-CN', 'zh', 'en']).fetch()
-        except:
-            transcript = transcript_list.find_transcript(['en']).translate('zh-Hans').fetch()
         formatter = TextFormatter()
-        return formatter.format_transcript(transcript)
+        try:
+            transcript = transcript_list.find_transcript(['zh-Hans', 'zh-Hant', 'zh-CN', 'zh', 'en', 'en-US', 'en-GB']).fetch()
+            return formatter.format_transcript(transcript)
+        except Exception:
+            pass
+        
+        # 降级：尝试翻译为中文，或者抓取首个可用字幕
+        for t in transcript_list:
+            if t.is_translatable:
+                try:
+                    translated = t.translate('zh-Hans').fetch()
+                    return formatter.format_transcript(translated)
+                except Exception:
+                    pass
+            try:
+                fetched = t.fetch()
+                return formatter.format_transcript(fetched)
+            except Exception:
+                pass
     except Exception as e:
         print(f"⚠️ 无法直接获取官方字幕 {video_id}: {e}")
-        return ""
+    return ""
 
 def get_youtube_transcript_via_audio(video_url: str) -> str:
     """降级备选方案：当 YouTube 无字幕时，调用 yt-dlp 提取音轨并使用阿里云 SenseVoice-V1 进行语音转文字"""
@@ -395,17 +406,29 @@ def process_github_trending():
         print(f"⚠️ Github 榜单获取失败: {e}")
 
 def fetch_and_parse_feed(url: str):
-    """使用浏览器 UA 拉取 RSS 内容，防止 Substack 等平台因 User-Agent 被 Cloudflare 拦截"""
+    """使用 requests 配合代理和真实浏览器 UA 拉取 RSS 内容，防止 Cloudflare / 防爬拦截"""
+    proxies = {
+        "http": "http://192.168.2.3:7890",
+        "https": "http://192.168.2.3:7890"
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/rss+xml, application/xml, text/xml, application/atom+xml, text/html;q=0.9, */*;q=0.8"
+    }
     try:
-        req = urllib.request.Request(
-            url, 
-            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
-        )
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            content = resp.read()
-            return feedparser.parse(content)
-    except Exception:
-        return feedparser.parse(url, agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+        r = requests.get(url, headers=headers, proxies=proxies, timeout=20)
+        if r.status_code == 200:
+            return feedparser.parse(r.text)
+        else:
+            print(f"⚠️ RSS 请求返回 HTTP {r.status_code}: {url}")
+            return feedparser.parse(r.text)
+    except Exception as e:
+        try:
+            # 直连重试
+            r = requests.get(url, headers=headers, timeout=15)
+            return feedparser.parse(r.text)
+        except Exception:
+            return feedparser.parse(url, agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
 
 def run_rss_fetcher():
     print("🚀 Gatekeeper 全球顶级财经与科技多源 RSS 自动提炼引擎启动！")
@@ -423,18 +446,26 @@ def run_rss_fetcher():
             try:
                 parsed_feed = fetch_and_parse_feed(url)
                 count = 0
-                limit = 1 if "top/.rss" in url else (3 if feed["type"] == "youtube" else 5)
+                limit = 1 if "top/.rss" in url else (3 if feed["type"] == "youtube" else 3)
                 
+                if not parsed_feed.entries:
+                    print(f"⏭️ {feed['name']} 暂无新条目或解析为空")
+                    continue
+
                 for entry in parsed_feed.entries:
-                    if feed["type"] == "youtube":
-                        process_youtube_entry(feed["name"], entry)
-                        count += 1
-                    elif feed["type"] == "reddit":
-                        process_reddit_entry(feed["name"], entry)
-                        count += 1
-                    elif feed["type"] == "substack":
-                        process_substack_entry(feed["name"], entry)
-                        count += 1
+                    try:
+                        if feed["type"] == "youtube":
+                            process_youtube_entry(feed["name"], entry)
+                            count += 1
+                        elif feed["type"] == "reddit":
+                            process_reddit_entry(feed["name"], entry)
+                            count += 1
+                            time.sleep(1.0) # 防 Reddit 429 频控
+                        elif feed["type"] == "substack":
+                            process_substack_entry(feed["name"], entry)
+                            count += 1
+                    except Exception as entry_err:
+                        print(f"⚠️ 处理单个条目异常 《{getattr(entry, 'title', '未知')}》: {entry_err}")
                         
                     if count >= limit:
                         break 
@@ -442,7 +473,10 @@ def run_rss_fetcher():
                 print(f"⚠️ 拉取 {feed['name']} 失败: {e}")
             
     # 2. 抓取 Github 趋势 (获取前 5 名)
-    process_github_trending()
+    try:
+        process_github_trending()
+    except Exception as e:
+        print(f"⚠️ GitHub 趋势抓取异常: {e}")
 
 if __name__ == "__main__":
     run_rss_fetcher()

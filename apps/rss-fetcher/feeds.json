@@ -1,83 +1,53 @@
 [
     {
-        "name": "小lin说",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UClq1oF_XReK0VrtzDr-2udA",
-        "type": "youtube"
+        "name": "Hacker News Top (硅谷极客风向标)",
+        "url": "https://hnrss.org/frontpage",
+        "type": "substack"
     },
     {
-        "name": "巫师财经",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC55ahPQ7m5iJdVWcOfmuE6g",
-        "type": "youtube"
+        "name": "Paul Graham Essays (硅谷教父商业与认知随笔)",
+        "url": "http://www.paulgraham.com/rss.html",
+        "type": "substack"
     },
     {
-        "name": "王剑每日观察",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC8UCbiPrm2zN9nZHKdTevZA",
-        "type": "youtube"
+        "name": "Simon Willison (AI 实用工程化)",
+        "url": "https://simonwillison.net/atom/everything/",
+        "type": "substack"
     },
     {
-        "name": "Principles by Ray Dalio",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCqvaXJ1K3HheTPNjH-KpwXQ",
-        "type": "youtube"
+        "name": "Interconnects (Nathan Lambert 前沿强化学习与开源模型)",
+        "url": "https://www.interconnects.ai/feed",
+        "type": "substack"
     },
     {
-        "name": "Patrick Boyle",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCASM0cgfkJxQ1ICmRilfHLw",
-        "type": "youtube"
+        "name": "One Useful Thing (Ethan Mollick 沃顿商学院 AI 实践)",
+        "url": "https://www.oneusefulthing.org/feed",
+        "type": "substack"
     },
     {
-        "name": "The Plain Bagel",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCFCEuCsyWP0YkP3CZ3Mr01Q",
-        "type": "youtube"
+        "name": "Collaborative Fund (Morgan Housel 金钱与商业哲学)",
+        "url": "https://collabfund.com/blog/feed",
+        "type": "substack"
     },
     {
-        "name": "Ben Felix (Rational Reminder)",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCOErWFfNOQzXsgE7f5S_ULw",
-        "type": "youtube"
+        "name": "The Generalist (商业巨头与科技帝国深度拆解)",
+        "url": "https://www.generalist.com/feed",
+        "type": "substack"
     },
     {
-        "name": "Economics Explained",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCVWX3F3DrTvDKa0LRilQoQQ",
-        "type": "youtube"
+        "name": "Not Boring by Packy McCormick (前沿商业战略与科技)",
+        "url": "https://www.notboring.co/feed",
+        "type": "substack"
     },
     {
-        "name": "All-In Podcast",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCESLZhusAkFfsNsApnjF_Cg",
-        "type": "youtube"
+        "name": "Visual Capitalist (全球商业与宏观数据图表)",
+        "url": "https://www.visualcapitalist.com/feed/",
+        "type": "substack"
     },
     {
-        "name": "Forward Guidance",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC0E-St9TloQ7TAu8hn1xJ9w",
-        "type": "youtube"
-    },
-    {
-        "name": "Real Vision Finance",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCBH5VZE_Y4F3CMcPIzPEB5A",
-        "type": "youtube"
-    },
-    {
-        "name": "CNBC Television",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCvJJ_dzjViJCoLf5uKUTwoA",
-        "type": "youtube"
-    },
-    {
-        "name": "Marques Brownlee",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ",
-        "type": "youtube"
-    },
-    {
-        "name": "AI Explained",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCNJ1Ymd5yWuZZxgIE3t2E3g",
-        "type": "youtube"
-    },
-    {
-        "name": "Fireship",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCsBjURrPoezykLs9EqgamOA",
-        "type": "youtube"
-    },
-    {
-        "name": "Two Minute Papers",
-        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCbfYPyITQ-7l4upoX8nvctg",
-        "type": "youtube"
+        "name": "SemiAnalysis (全球半导体产业链与AI算力)",
+        "url": "https://newsletter.semianalysis.com/feed",
+        "type": "substack"
     },
     {
         "name": "Noahpinion (Noah Smith 宏观智库)",
@@ -115,49 +85,69 @@
         "type": "substack"
     },
     {
-        "name": "SemiAnalysis (全球半导体产业链与AI算力)",
-        "url": "https://newsletter.semianalysis.com/feed",
-        "type": "substack"
-    },
-    {
-        "name": "Morgan Stanley Insights",
-        "url": "https://www.morganstanley.com/ideas.rss",
-        "type": "substack"
-    },
-    {
-        "name": "The Pragmatic Engineer",
+        "name": "The Pragmatic Engineer (顶级软件工程师)",
         "url": "https://blog.pragmaticengineer.com/rss/",
         "type": "substack"
     },
     {
-        "name": "Lenny's Newsletter",
+        "name": "Lenny's Newsletter (产品与增长深度)",
         "url": "https://www.lennysnewsletter.com/feed",
         "type": "substack"
     },
     {
-        "name": "Stratechery",
+        "name": "Stratechery (全球科技商业战略)",
         "url": "https://stratechery.com/feed/",
         "type": "substack"
     },
     {
-        "name": "ChinaTalk",
+        "name": "ChinaTalk (全球看中国科技与商业)",
         "url": "https://www.chinatalk.media/feed",
         "type": "substack"
     },
     {
-        "name": "Import AI",
+        "name": "Import AI (Jack Clark AI政策与技术前沿)",
         "url": "https://importai.substack.com/feed",
         "type": "substack"
     },
     {
-        "name": "Ahead of AI",
+        "name": "Ahead of AI (Sebastian Raschka 机器学习与大模型)",
         "url": "https://magazine.sebastianraschka.com/feed",
         "type": "substack"
     },
     {
-        "name": "Latent Space",
+        "name": "Latent Space (AI 工程师社区深度)",
         "url": "https://www.latent.space/feed",
         "type": "substack"
+    },
+    {
+        "name": "Principles by Ray Dalio",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCqvaXJ1K3HheTPNjH-KpwXQ",
+        "type": "youtube"
+    },
+    {
+        "name": "Patrick Boyle",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCASM0cgfkJxQ1ICmRilfHLw",
+        "type": "youtube"
+    },
+    {
+        "name": "The Plain Bagel",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCFCEuCsyWP0YkP3CZ3Mr01Q",
+        "type": "youtube"
+    },
+    {
+        "name": "Ben Felix (Rational Reminder)",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCOErWFfNOQzXsgE7f5S_ULw",
+        "type": "youtube"
+    },
+    {
+        "name": "Fireship",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCsBjURrPoezykLs9EqgamOA",
+        "type": "youtube"
+    },
+    {
+        "name": "Two Minute Papers",
+        "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCbfYPyITQ-7l4upoX8nvctg",
+        "type": "youtube"
     },
     {
         "name": "r/LocalLLaMA",
@@ -167,11 +157,6 @@
     {
         "name": "r/CursorAI",
         "url": "https://www.reddit.com/r/CursorAI/top/.rss?t=day",
-        "type": "reddit"
-    },
-    {
-        "name": "r/hardware",
-        "url": "https://www.reddit.com/r/hardware/top/.rss?t=day",
         "type": "reddit"
     },
     {
@@ -187,11 +172,6 @@
     {
         "name": "r/investing",
         "url": "https://www.reddit.com/r/investing/top/.rss?t=day",
-        "type": "reddit"
-    },
-    {
-        "name": "r/wallstreetbets",
-        "url": "https://www.reddit.com/r/wallstreetbets/top/.rss?t=day",
         "type": "reddit"
     }
 ]

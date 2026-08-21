@@ -16,7 +16,12 @@ from pathlib import Path
 # 配置代理与运行环境
 os.environ['HTTP_PROXY'] = 'http://192.168.2.3:7890'
 os.environ['HTTPS_PROXY'] = 'http://192.168.2.3:7890'
+os.environ['http_proxy'] = 'http://192.168.2.3:7890'
+os.environ['https_proxy'] = 'http://192.168.2.3:7890'
+os.environ['ALL_PROXY'] = 'http://192.168.2.3:7890'
+os.environ['all_proxy'] = 'http://192.168.2.3:7890'
 os.environ['NO_PROXY'] = 'localhost,127.0.0.1,dashscope.aliyuncs.com,ark.cn-beijing.volces.com'
+os.environ['no_proxy'] = 'localhost,127.0.0.1,dashscope.aliyuncs.com,ark.cn-beijing.volces.com'
 
 project_root = str(Path(__file__).resolve().parent.parent.parent)
 tg_bot_dir = str(Path(__file__).resolve().parent.parent / "tg-bot")
@@ -111,16 +116,24 @@ def generate_daily_digest(target_date: str = None) -> Path | None:
 
     client = get_deepseek_client()
     try:
-        response = client.chat.completions.create(
+        stream = client.chat.completions.create(
             model=VOLCENGINE_ENDPOINT_ID,
             messages=[
                 {"role": "system", "content": "你是一位顶尖的第二大脑首席情报分析师。"},
                 {"role": "user", "content": prompt}
             ],
-            stream=False,
-            timeout=300
+            stream=True,
+            temperature=0.3,
+            max_tokens=6000
         )
-        report_content = response.choices[0].message.content.strip()
+        chunks = []
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                chunks.append(chunk.choices[0].delta.content)
+        report_content = "".join(chunks).strip()
+        if not report_content:
+            print("❌ DeepSeek 返回空报告内容")
+            return None
     except Exception as e:
         print(f"❌ DeepSeek 生成每日简报失败: {e}")
         return None
@@ -161,16 +174,6 @@ type: daily_summary
         f.write(frontmatter)
         
     print(f"✅ 每日情报汇编已生成并保存至: {summary_file}")
-    
-    # 自动同步至 Google Drive 与 OneDrive
-    try:
-        import subprocess
-        print("☁️ 同步 Daily Summary 至 Google Drive 与 OneDrive...")
-        subprocess.run(["rclone", "copy", str(summary_file), "gdrive:Auto_Summary/"], check=False)
-        subprocess.run(["rclone", "copy", str(summary_file), "onedrive:应用/remotely-save/notes/Auto_Summary/"], check=False)
-    except Exception as e:
-        print(f"⚠️ 云盘同步异常: {e}")
-        
     return summary_file
 
 if __name__ == "__main__":

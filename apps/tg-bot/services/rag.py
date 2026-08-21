@@ -48,7 +48,11 @@ def float_array_to_blob(float_array: list[float]) -> bytes:
     return struct.pack(f'{len(float_array)}f', *float_array)
 
 async def _execute_turso(sql: str, args: list = None):
+    if not Config.TURSO_DATABASE_URL or not Config.TURSO_AUTH_TOKEN:
+        return []
     base = Config.TURSO_DATABASE_URL.replace("wss://", "https://").replace("libsql://", "https://")
+    if not base.startswith("http"):
+        base = f"https://{base}"
     url = f"{base}/v2/pipeline"
     headers = {
         "Authorization": f"Bearer {Config.TURSO_AUTH_TOKEN}",

@@ -29,7 +29,7 @@ def get_deepseek_client() -> OpenAI:
     return OpenAI(
         api_key=VOLCENGINE_API_KEY,
         base_url="https://ark.cn-beijing.volces.com/api/v3",
-        http_client=httpx.Client(trust_env=False) # Bypass proxy if any
+        http_client=httpx.Client(trust_env=False, timeout=httpx.Timeout(300.0, connect=15.0)) # Bypass proxy with robust timeout
     )
 
 def is_primarily_chinese(text: str) -> bool:
@@ -51,16 +51,22 @@ def translate_with_deepseek(text: str) -> str:
     
     try:
         print("⏳ 正在使用火山方舟 DeepSeek 进行全文翻译 (含中英对照)...")
-        response = client.chat.completions.create(
+        stream = client.chat.completions.create(
             model=VOLCENGINE_ENDPOINT_ID,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
-            stream=False,
-            timeout=300
+            stream=True,
+            temperature=0.3,
+            max_tokens=4096
         )
-        return response.choices[0].message.content.strip()
+        chunks = []
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                chunks.append(chunk.choices[0].delta.content)
+        result = "".join(chunks).strip()
+        return result if result else text
     except Exception as e:
         print(f"⚠️ DeepSeek 翻译失败: {e}")
         return text
@@ -86,16 +92,22 @@ def generate_summary_with_deepseek(content: str, is_raw_content: bool = True) ->
         
     try:
         print("⏳ 正在使用火山方舟 DeepSeek 生成深度简报...")
-        response = client.chat.completions.create(
+        stream = client.chat.completions.create(
             model=VOLCENGINE_ENDPOINT_ID,
             messages=[
                 {"role": "system", "content": "你是一个专业的情报分析师。"},
                 {"role": "user", "content": prompt}
             ],
-            stream=False,
-            timeout=300
+            stream=True,
+            temperature=0.3,
+            max_tokens=4096
         )
-        return response.choices[0].message.content.strip()
+        chunks = []
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                chunks.append(chunk.choices[0].delta.content)
+        result = "".join(chunks).strip()
+        return result if result else "摘要生成为空。"
     except Exception as e:
         print(f"⚠️ DeepSeek 生成总结失败: {e}")
         return "摘要生成失败。"
