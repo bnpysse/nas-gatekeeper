@@ -79,17 +79,72 @@ async def render_dashboard(request: Request):
     summary_task = detector.detect_all()
     probe_task = probe_engine.probe_all()
     
-    summary, probe = await asyncio.gather(summary_task, probe_task, return_exceptions=True)
-    if isinstance(summary, Exception):
-        summary = {"total_free_models": 0, "active_providers": 0, "total_providers": 0, "urgent_expiring_models": 0, "today_quota_left_ratio": 100, "all_models": []}
-    if isinstance(probe, Exception):
+    summary_raw, probe = await asyncio.gather(summary_task, probe_task, return_exceptions=True)
+    
+    flattened_models = []
+    summary_info = {
+        "total_free_models": 0,
+        "active_providers": 0,
+        "total_providers": 6,
+        "urgent_expiring_models": 0,
+        "daily_replenish_tokens": "200万+ / 天"
+    }
+
+    if not isinstance(summary_raw, Exception) and summary_raw:
+        summary_info["total_free_models"] = getattr(summary_raw, "total_free_models", 0)
+        summary_info["active_providers"] = getattr(summary_raw, "active_providers", 0)
+        summary_info["total_providers"] = getattr(summary_raw, "total_providers", 6)
+        summary_info["urgent_expiring_models"] = getattr(summary_raw, "urgent_expiring_models", 0)
+
+        providers = getattr(summary_raw, "providers", {})
+        for pid, p in providers.items():
+            p_name = getattr(p, "provider_name", pid)
+            p_active = getattr(p, "active", True)
+            p_models = getattr(p, "models", [])
+            for m in p_models:
+                rem_ratio = getattr(m, "remaining_ratio", 1.0)
+                rem_percent = round(rem_ratio * 100, 1) if rem_ratio is not None else 100.0
+                days_left = getattr(m, "days_left", None)
+                expire_date = getattr(m, "expire_date", None)
+                is_expiring = days_left is not None and days_left <= 15
+                
+                if days_left is not None:
+                    expire_display = f"{days_left}天后到期 ({expire_date or ''})"
+                elif pid in ("volcengine", "gemini"):
+                    expire_display = "每日 0 点自动补给循环包"
+                else:
+                    expire_display = "长期有效 / 免费调用"
+
+                quota_type = "0元限免" if getattr(m, "is_free", True) else "按量/专用"
+                if "每日" in expire_display:
+                    quota_type = "每日循环"
+
+                flattened_models.append({
+                    "model_id": getattr(m, "id", ""),
+                    "model_name": getattr(m, "name", ""),
+                    "provider_id": pid,
+                    "provider_name": p_name,
+                    "context_window": getattr(m, "context_window", "32K"),
+                    "is_free": getattr(m, "is_free", True),
+                    "category": getattr(m, "category", "chat"),
+                    "quota_type": quota_type,
+                    "remaining_percent": rem_percent,
+                    "remaining_display": f"{rem_percent}%",
+                    "is_expiring_soon": is_expiring,
+                    "expire_display": expire_display,
+                    "days_left": days_left,
+                    "latency_ms": getattr(m, "latency_ms", 0)
+                })
+
+    if isinstance(probe, Exception) or not probe:
         probe = {"nodes": {}, "services": [], "heartbeat": {}}
 
     return templates.TemplateResponse(
         request=request,
         name="index.html",
         context={
-            "summary": summary,
+            "summary": summary_info,
+            "models": flattened_models,
             "probe": probe,
             "version": "2.0.0"
         }
