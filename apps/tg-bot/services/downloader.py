@@ -47,11 +47,27 @@ SHORT_LINK_DOMAINS = [
 TOUTIAO_DOMAINS = ["toutiao", "ixigua", "xigua"]
 
 # Cookie 文件自动定位
-def find_cookies_file() -> Path | None:
-    """自动定位 cookies.txt 认证文件"""
+def find_cookies_file(domain: str = "all") -> Path | None:
+    """自动定位最匹配的 cookies.txt 认证文件"""
+    if domain == "douyin":
+        douyin_candidates = [
+            Path("/opt/SecondBrain-Flow/douyin_cookies.txt"),
+            Path("/opt/nas-gatekeeper/apps/tg-bot/douyin_cookies.txt"),
+            Path(__file__).parent.parent / "douyin_cookies.txt",
+            Path.cwd() / "douyin_cookies.txt",
+            Path("/opt/SecondBrain-Flow/cookies.txt"),
+            Path("/opt/nas-gatekeeper/apps/tg-bot/cookies.txt"),
+            Path(__file__).parent.parent / "cookies.txt",
+        ]
+        for c in douyin_candidates:
+            if c.exists() and c.stat().st_size > 50:
+                return c
+
     candidates = [
-        Path(__file__).parent.parent / "cookies.txt",
+        Path("/opt/SecondBrain-Flow/cookies.txt"),
+        Path("/opt/SecondBrain-Flow/douyin_cookies.txt"),
         Path("/opt/nas-gatekeeper/apps/tg-bot/cookies.txt"),
+        Path(__file__).parent.parent / "cookies.txt",
         Path("/app/cookies.txt"),
         Path.cwd() / "cookies.txt",
         Path.cwd() / "apps/tg-bot/cookies.txt",
@@ -294,9 +310,15 @@ def download_audio_from_url(
     extractor_args = ["--extractor-args", "youtube:player_client=android,web"] if is_youtube else []
     ua_args = [] if is_youtube else ["--user-agent", DESKTOP_UA]
 
-    # Cookie 认证（仅头条/西瓜等字节系平台使用专属 cookies.txt，避免污染 YouTube 等海外平台）
-    cookies_path = find_cookies_file()
-    cookies_args = ["--cookies", str(cookies_path)] if (cookies_path and is_toutiao) else []
+    # 平台特征判定
+    is_douyin = any(d in target_url or d in url for d in ["douyin.com", "iesdouyin.com"])
+    is_bytedance = is_toutiao or is_douyin
+    is_bilibili = any(d in target_url for d in ["bilibili.com", "b23.tv"])
+
+    # Cookie 认证（对抖音、头条、西瓜、B站等国内平台注入对应专属 cookies）
+    cookie_domain = "douyin" if is_douyin else ("toutiao" if is_toutiao else "all")
+    cookies_path = find_cookies_file(cookie_domain)
+    cookies_args = ["--cookies", str(cookies_path)] if (cookies_path and (is_bytedance or is_bilibili)) else []
 
     # Step 1: 获取视频标题
     video_title = f"视频_{file_id}"

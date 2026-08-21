@@ -76,8 +76,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "2. 📰 **知乎/微信公众号/网页链接**：抓取正文并由 百炼 (DashScope) 提炼要点。\n"
         "3. 🎙️ **文本/闪念**：自动记录落地。\n\n"
         "⚙️ 指令：\n"
-        "/status - 查看运行状态\n"
-        "/clean - 清理旧草稿"
+        "/quota - ⚡ 探测 TokenGate 全网免费算力与临期资产\n"
+        "/chat <内容> - 🧠 TokenGate 智能调度大模型对话\n"
+        "/ask <问题> - 🔍 RAG 语义检索 Obsidian 知识库\n"
+        "/status - 🟢 查看第二大脑运行状态\n"
+        "/clean - 🧹 清理 30 天前旧草稿"
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
@@ -381,28 +384,97 @@ def main():
             logger.error(f"RAG 检索失败: {e}")
             await status_message.edit_text(f"抱歉，检索分析失败: {e}")
             
-    # 新增 /chat 命令，纯聊天功能
+    # 新增 /quota 与 /tokens 算力看板指令
+    async def quota_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not check_permission(update):
+            return
+        status_msg = await update.message.reply_text("⚡ 正在探测 TokenGate 全网免费算力状态...")
+        try:
+            import httpx
+            data = None
+            for u in ["https://tg.donglida.com/api/quotas", "https://tg.donglida.xyz/api/quotas"]:
+                try:
+                    async with httpx.AsyncClient(timeout=6.0) as client:
+                        resp = await client.get(u)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            break
+                except Exception:
+                    continue
+            
+            if not data:
+                await status_msg.edit_text("❌ 无法连接 TokenGate 算力网关，请检查服务器网络。")
+                return
+
+            total_models = data.get("total_free_models", 0)
+            daily_tokens = data.get("daily_replenish_tokens", "200万+ / 天")
+            providers = data.get("providers", {})
+            
+            all_models = []
+            for p in providers.values():
+                if p.get("active"):
+                    all_models.extend(p.get("models", []))
+            
+            expiring = [m for m in all_models if m.get("days_left") is not None and m["days_left"] <= 30]
+            expiring_txt = "\n".join([f"• 🔥 *{m['name']}*: 剩余 {m.get('remaining_ratio',1)*100:.1f}% | 仅剩 `{m['days_left']} 天` ({m.get('expire_date')})" for m in expiring]) or "暂无 30 天内临期模型"
+            
+            text = (
+                "⚡ *TokenGate 免费算力全景审计 (N100 直连)*\n\n"
+                f"📊 *算力总览*：已纳管 `{total_models}` 款免费模型 | 每日循环补给 `{daily_tokens}`\n\n"
+                f"🚨 *临期抢跑资产 (建议全速消耗)*：\n{expiring_txt}\n\n"
+                "🔄 *每日无限续杯*：\n• **DeepSeek-V4-Pro (火山)**: 2,000,000 Tokens/天 (每日0点重置)\n\n"
+                "💎 *知识库底座*：\n• **Qwen3-VL-Embedding (2560维)**: 2M 额度 (剩余 99.9%)\n• **Qwen3-VL-Rerank**: 100% 满血\n\n"
+                "🌐 *算力大屏*：[https://tg.donglida.com](https://tg.donglida.com)\n"
+                "🚀 *网关调度*：`model='auto'` 优先消耗临期与每日免费"
+            )
+            await status_msg.edit_text(text, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"查询配额失败: {e}")
+            await status_msg.edit_text(f"❌ 探测 TokenGate 失败: {e}")
+
+    # 新增 /chat 命令，通过 TokenGate 智能统一调度
     async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not check_permission(update):
             return
             
         question = " ".join(context.args)
         if not question:
-            await update.message.reply_text("请提供您的聊天内容。例如：`/chat 帮我写一封辞职信`", parse_mode='Markdown')
+            await update.message.reply_text("请提供您的聊天内容。例如：`/chat 帮我写一份投资研究备忘录`", parse_mode='Markdown')
             return
             
-        status_message = await update.message.reply_text("正在思考中...")
+        status_message = await update.message.reply_text("🧠 TokenGate 智能调度中...")
         try:
-            import google.generativeai as genai
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(question)
-            await status_message.edit_text(response.text, parse_mode='Markdown')
+            import httpx
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                res = await client.post(
+                    "https://tg.donglida.com/v1/chat/completions",
+                    json={
+                        "model": "auto",
+                        "messages": [
+                            {"role": "system", "content": "你是由 TokenGate 智能算力网关驱动的个人第二大脑助手。回答简明深刻、专业可靠。"},
+                            {"role": "user", "content": question}
+                        ],
+                        "stream": False
+                    }
+                )
+                if res.status_code == 200:
+                    ans = res.json()["choices"][0]["message"]["content"]
+                    await status_message.edit_text(ans, parse_mode='Markdown')
+                else:
+                    await status_message.edit_text(f"网关响应异常 ({res.status_code}): {res.text}")
         except Exception as e:
             logger.error(f"聊天失败: {e}")
             await status_message.edit_text(f"抱歉，遇到了一点问题: {e}")
-            
+
+    async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """全局 Telegram 异常处理，避免刷屏日志"""
+        logger.warning(f"Telegram 网络或调度异常已捕获: {context.error}")
+
+    app.add_error_handler(error_handler)
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("status", status_command))
+    app.add_handler(CommandHandler("quota", quota_command))
+    app.add_handler(CommandHandler("tokens", quota_command))
     app.add_handler(CommandHandler("clean", clean_command))
     app.add_handler(CommandHandler("ask", ask_command))
     app.add_handler(CommandHandler("chat", chat_command))

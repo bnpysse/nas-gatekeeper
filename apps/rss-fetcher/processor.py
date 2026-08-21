@@ -29,7 +29,10 @@ def get_deepseek_client() -> OpenAI:
     return OpenAI(
         api_key=VOLCENGINE_API_KEY,
         base_url="https://ark.cn-beijing.volces.com/api/v3",
-        http_client=httpx.Client(trust_env=False, timeout=httpx.Timeout(300.0, connect=15.0)) # Bypass proxy with robust timeout
+        http_client=httpx.Client(
+            trust_env=False,
+            timeout=httpx.Timeout(45.0, connect=10.0, read=45.0, write=15.0)
+        )
     )
 
 def is_primarily_chinese(text: str) -> bool:
@@ -47,7 +50,10 @@ def translate_with_deepseek(text: str) -> str:
         
     client = get_deepseek_client()
     system_prompt = "你是一位专业的资深中英文翻译专家。你的任务是将用户提供的英文文本完美翻译为中文。为了保留英文原意，请直接返回'原文+中文翻译'的混合排版格式。即：一段英文，紧跟着一段对应的中文翻译。必须严格保留原文的Markdown符号及排版格式。若输入本身已是中文，请原样返回。"
-    prompt = f"请翻译以下文本：\n\n{text}"
+    
+    # 截断输入避免爆上下文与超时
+    truncated_input = text[:5000]
+    prompt = f"请翻译以下文本：\n\n{truncated_input}"
     
     try:
         print("⏳ 正在使用火山方舟 DeepSeek 进行全文翻译 (含中英对照)...")
@@ -85,10 +91,10 @@ def generate_summary_with_deepseek(content: str, is_raw_content: bool = True) ->
 #标签1 #标签2
 
 内容：
-{content[:8000]}
+{content[:6000]}
 """
     else:
-        prompt = content
+        prompt = content[:6000]
         
     try:
         print("⏳ 正在使用火山方舟 DeepSeek 生成深度简报...")
@@ -113,8 +119,17 @@ def generate_summary_with_deepseek(content: str, is_raw_content: bool = True) ->
         return "摘要生成失败。"
 
 def analyze_github_repo(repo_url: str, readme_content: str) -> tuple:
-    translated_text = translate_with_deepseek(readme_content[:15000])
-    summary = generate_summary_with_deepseek(translated_text)
+    clean_readme = readme_content[:4000] if readme_content else "README content unavailable."
+    try:
+        translated_text = translate_with_deepseek(clean_readme)
+    except Exception as e:
+        print(f"⚠️ Github 翻译跳过: {e}")
+        translated_text = clean_readme
+    try:
+        summary = generate_summary_with_deepseek(translated_text)
+    except Exception as e:
+        print(f"⚠️ Github 简报跳过: {e}")
+        summary = "Github 仓库简报生成失败。"
     return translated_text, summary
 
 def analyze_youtube_transcript(video_title: str, channel_name: str, video_url: str, transcript_text: str) -> tuple:

@@ -43,6 +43,24 @@ def get_mime_type(file_path: Path) -> str:
     guessed, _ = mimetypes.guess_type(str(file_path))
     return guessed or "audio/mp4"
 
+def get_tokengate_async_client() -> AsyncOpenAI:
+    return AsyncOpenAI(
+        http_client=httpx.AsyncClient(proxy=None, timeout=25.0),
+        api_key=Config.DASHSCOPE_API_KEY or "tg-sk",
+        base_url="https://tg.donglida.xyz/v1"
+    )
+
+def clean_markdown_fence(text: str) -> str:
+    """清洗大模型输出的多余最外层 ```markdown 或 ``` 代码块包裹"""
+    s = (text or "").strip()
+    if s.startswith("```markdown") and s.endswith("```"):
+        s = s[len("```markdown"): -3].strip()
+    elif s.startswith("```md") and s.endswith("```"):
+        s = s[len("```md"): -3].strip()
+    elif s.startswith("```") and s.endswith("```"):
+        s = s[3:-3].strip()
+    return s
+
 def get_dashscope_async_client() -> AsyncOpenAI:
     return AsyncOpenAI(http_client=httpx.AsyncClient(proxy=None), 
         api_key=Config.DASHSCOPE_API_KEY,
@@ -58,21 +76,20 @@ def get_volcengine_async_client() -> AsyncOpenAI:
 
 def transcribe_audio_sensevoice(audio_path: Path, preferred_models: list = None) -> str:
     """使用阿里云百炼 DashScope 智能多模型级联进行语音识别 (首选 paraformer-v2 -> paraformer-v1 -> sensevoice-v1)"""
-    import dashscope
-    from dashscope.audio.asr import Transcription
-
-    dashscope.api_key = Config.DASHSCOPE_API_KEY
     if preferred_models is None:
         preferred_models = ["paraformer-v2", "paraformer-v1", "sensevoice-v1"]
 
-    # 1. 上传音频到百炼 Files 临时存储
-    upload_res = dashscope.Files.upload(file_path=str(audio_path), purpose="inference")
-    if upload_res.status_code != 200:
-        raise RuntimeError(f"DashScope 文件上传失败: {upload_res.message}")
-    
-    file_id = upload_res.output["uploaded_files"][0]["file_id"]
+    import dashscope
+    from dashscope.audio.asr import Transcription
+    dashscope.api_key = Config.DASHSCOPE_API_KEY
+
+    logger.info(f"🎙️ 正在上传音频至 DashScope 空间: {audio_path.name}")
+    upload_res = dashscope.Files.upload(file_path=str(audio_path), purpose="inference", description="telegram_voice_sync")
+    file_id = upload_res.output.get("uploaded_files", [{}])[0].get("file_id")
+    if not file_id:
+        raise RuntimeError(f"音频上传至 DashScope 失败: {upload_res}")
+
     try:
-        # 2. 获取临时访问 URL
         file_info = dashscope.Files.get(file_id=file_id)
         file_url = file_info.output.get("url")
         if not file_url:
@@ -123,34 +140,48 @@ async def _summarize_with_qwen_stream(text: str, title: str):
         f"视频/文章标题：《{title}》\n\n"
         f"【严格约束】：你必须 100% 严格基于以下提供的【真实原文内容】进行分析与提炼！"
         f"严禁脱离原文依据进行任何凭空猜测、臆测编造或虚构事实。如果原文没有提及，一律不得推断为既成事实。\n\n"
+        f"【格式要求】：直接输出 Markdown 正文，严禁在最外层使用 ```markdown 或 ``` 代码块包裹！\n\n"
         f"【真实原文内容】：\n{text[:20000]}\n\n"
         f"请输出 Markdown 格式的深度提炼（包含：🎯 核心观点摘要、📌 关键脉络与论据、💡 核心洞察）："
     )
     try:
-        client = get_dashscope_async_client()
+        client = get_tokengate_async_client()
         response = await client.chat.completions.create(
-            model=Config.DASHSCOPE_CHAT_MODEL,
+            model="auto",
             messages=[{"role": "user", "content": prompt}],
             stream=True
         )
         async for chunk in response:
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
-    except Exception as e:
-        logger.error(f"Qwen 总结失败: {e}")
-        yield f"\n\n> [!WARNING] Qwen 分析失败: {e}"
+    except Exception as tg_err:
+        logger.warning(f"TokenGate 代理调用异常 ({tg_err})，自动降级至百炼原生直连...")
+        try:
+            client = get_dashscope_async_client()
+            response = await client.chat.completions.create(
+                model=Config.DASHSCOPE_CHAT_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                stream=True
+            )
+            async for chunk in response:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            logger.error(f"Qwen 总结彻底失败: {e}")
+            yield f"\n\n> [!WARNING] Qwen 分析失败: {e}"
 
 async def _summarize_with_volcengine_stream(text: str, title: str):
     prompt = (
         f"视频/文章标题：《{title}》\n\n"
         f"【严格约束】：你必须 100% 严格基于以下提供的【真实原文内容】进行分析与提炼！"
         f"严禁脱离原文依据进行任何凭空猜测、臆测编造或虚构事实。如果原文没有提及，一律不得推断为既成事实。\n\n"
+        f"【格式要求】：直接输出 Markdown 正文，严禁在最外层使用 ```markdown 或 ``` 代码块包裹！\n\n"
         f"【真实原文内容】：\n{text[:20000]}\n\n"
         f"请输出 Markdown 格式的深度提炼（包含：🎯 核心观点摘要、📌 关键脉络与论据、💡 核心洞察）："
     )
     try:
         client = get_volcengine_async_client()
-        model_id = Config.VOLCENGINE_ENDPOINT_ID or "ep-20260809122445-td2g2"
+        model_id = Config.VOLCENGINE_ENDPOINT_ID or "ep-20260820195716-snkzx"
         response = await client.chat.completions.create(
             model=model_id,
             messages=[{"role": "user", "content": prompt}],
@@ -164,7 +195,7 @@ async def _summarize_with_volcengine_stream(text: str, title: str):
         yield f"\n\n> [!WARNING] Volcengine DeepSeek 分析失败: {e}"
 
 async def multi_model_summarize_stream(text: str, title: str, update_callback=None) -> str:
-    """并行调用双模型，支持流式返回状态，带有严格防幻觉校验"""
+    """并行调用双模型，支持流式返回状态，带有严格防幻觉校验与 Markdown 净空"""
     clean_text = (text or "").strip()
     if len(clean_text) < 30:
         raise ValueError("未能获取到有效的原文或字幕内容（文本不足 30 字）。为杜绝脱离原文的凭空臆测，系统已安全中止总结。")
@@ -184,8 +215,12 @@ async def multi_model_summarize_stream(text: str, title: str, update_callback=No
                 await update_callback(state)
                 
     await asyncio.gather(run_qwen(), run_volc())
+
+    # 关键：彻底清洗两者的外层 ```markdown 代码块包裹
+    volc_clean = clean_markdown_fence(state["volc"])
+    qwen_clean = clean_markdown_fence(state["qwen"])
     
-    combined = f"## 📊 多模型综合分析报告\n\n### 🐳 火山引擎 DeepSeek-V4 总结\n{state['volc']}\n\n---\n\n### 🔵 百炼 Qwen 3.8 Max 总结\n{state['qwen']}\n"
+    combined = f"## 📊 双模型深度交叉分析报告\n\n### 🐳 火山引擎 DeepSeek-V4 (每日循环保底)\n\n{volc_clean}\n\n---\n\n### 🔵 阿里百炼 Qwen (TokenGate 抢跑调度)\n\n{qwen_clean}\n"
     return combined
 
 async def analyze_audio_with_sensevoice_and_multi_stream(audio_path: Path, video_title: str, update_callback=None) -> dict:
