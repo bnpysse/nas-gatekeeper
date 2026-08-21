@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  tokengate:
+    build: .
+    container_name: tokengate
+    restart: always
+    ports:
+      - "8800:8800"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8800/api/quotas"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

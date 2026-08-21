@@ -67,4 +67,12 @@ if [[ -d .git ]] && [[ -n $(git status -s) ]]; then
     git push origin main >> /var/log/secondbrain.log 2>&1
 fi
 
+# 8. 向 TokenGate / Gatekeeper 探针大屏打卡发送心跳
+echo "💓 Reporting heartbeat to Gatekeeper Probe Dashboard..." >> /var/log/secondbrain.log
+ITEM_COUNT=$(sqlite3 /opt/nas-gatekeeper/apps/rss-fetcher/processed_items.db "SELECT count(*) FROM processed_items" 2>/dev/null || echo "0")
+DAILY_NAME=$(ls -t /opt/obsidian-brain-data/Auto_Summary/*.md 2>/dev/null | head -n 1 | xargs -n 1 basename 2>/dev/null || echo "暂无")
+curl -s -m 5 -X POST https://tg.donglida.com/api/heartbeat/crawler \
+  -H "Content-Type: application/json" \
+  -d "{\"status\": \"ok\", \"articles_today\": $ITEM_COUNT, \"daily_summary\": \"$DAILY_NAME\"}" >> /var/log/secondbrain.log 2>&1 || true
+
 echo "=== Finished Crawl === $(date)" >> /var/log/secondbrain.log
