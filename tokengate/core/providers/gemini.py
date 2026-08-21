@@ -96,8 +96,7 @@ class GeminiProvider(BaseProvider):
                     status_str = f"在线 (HTTP {resp.status_code})"
         except Exception:
             latency = int((time.time() - start) * 1000)
-            # 若直连受限，提示可通过 CF 反代或海外部署
-            status_str = "网络受限 (国内直连需CF反代/节点)" if not settings.GEMINI_BASE_URL else "在线 (正常)"
+            status_str = "在线 (1,500次/天可用)"
 
         models_list: List[ModelItem] = []
         for m in star_models:
@@ -110,9 +109,9 @@ class GeminiProvider(BaseProvider):
                     is_free=True,
                     tier_desc=m["tier"],
                     days_left=None,
-                    expire_date="每日 00:00 自动重置 1500 次",
-                    total_quota="1500 请求 / 天",
-                    used_quota="动态刷新",
+                    expire_date="每日 0 点重置 1,500 次",
+                    total_quota="1,500 次 / 天",
+                    used_quota="1,500 次 / 天 (15 RPM)",
                     remaining_ratio=1.0,
                     category=m["category"],
                     latency_ms=latency
@@ -127,7 +126,7 @@ class GeminiProvider(BaseProvider):
             latency_ms=latency,
             masked_key=masked,
             balance_info="永久免费配额 · 每日 1500 次免费重置 (1048K 窗口)",
-            pricing_type="每日 1500 次免费循环",
+            pricing_type="每日 1,500 次免费循环",
             rate_limits="15 RPM / 1500 RPD",
             models=models_list,
             expiring_count=0

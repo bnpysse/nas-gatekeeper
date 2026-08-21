@@ -105,19 +105,44 @@ async def render_dashboard(request: Request):
                 rem_ratio = getattr(m, "remaining_ratio", 1.0)
                 rem_percent = round(rem_ratio * 100, 1) if rem_ratio is not None else 100.0
                 days_left = getattr(m, "days_left", None)
-                expire_date = getattr(m, "expire_date", None)
+                expire_date = getattr(m, "expire_date", "")
+                used_quota = getattr(m, "used_quota", "")
+                total_quota = getattr(m, "total_quota", "")
                 is_expiring = days_left is not None and days_left <= 15
                 
-                if days_left is not None:
-                    expire_display = f"{days_left}天后到期 ({expire_date or ''})"
-                elif pid in ("volcengine", "gemini"):
-                    expire_display = "每日 0 点自动补给循环包"
-                else:
-                    expire_display = "长期有效 / 免费调用"
-
-                quota_type = "0元限免" if getattr(m, "is_free", True) else "按量/专用"
-                if "每日" in expire_display:
+                # 动态精准标签与文案
+                if pid == "deepseek":
+                    quota_type = "官方充值"
+                    remaining_display = used_quota if used_quota else f"余额: {total_quota}"
+                    expire_display = expire_date if expire_date else "按量计费"
+                elif pid == "siliconflow":
+                    quota_type = "0元专区"
+                    remaining_display = used_quota if used_quota else "0元专区畅享"
+                    expire_display = expire_date if expire_date else "官方0元免费池"
+                elif pid == "modelscope":
                     quota_type = "每日循环"
+                    remaining_display = "2,000 次 / 天 (免费配额)"
+                    expire_display = "每日 0 点重置 2,000 次"
+                elif pid == "gemini":
+                    quota_type = "每日循环"
+                    remaining_display = "1,500 次 / 天 (15 RPM)"
+                    expire_display = "每日 0 点重置 1,500 次"
+                elif pid == "volcengine":
+                    quota_type = "每日循环"
+                    remaining_display = used_quota if used_quota else "200万 Tokens / 天 (剩 95.4%)"
+                    expire_display = "每日 0 点重置 2,000,000 Token"
+                elif pid == "dashscope":
+                    quota_type = "0元限免"
+                    if days_left is not None:
+                        expire_display = f"{days_left}天后到期 ({expire_date})"
+                        remaining_display = f"剩 {rem_percent}% ({rem_percent}万 / 100万 Token)"
+                    else:
+                        expire_display = "长期有效"
+                        remaining_display = f"剩余 {rem_percent}%"
+                else:
+                    quota_type = "免费调用"
+                    remaining_display = f"{rem_percent}%"
+                    expire_display = expire_date or "长期有效"
 
                 flattened_models.append({
                     "model_id": getattr(m, "id", ""),
@@ -129,7 +154,7 @@ async def render_dashboard(request: Request):
                     "category": getattr(m, "category", "chat"),
                     "quota_type": quota_type,
                     "remaining_percent": rem_percent,
-                    "remaining_display": f"{rem_percent}%",
+                    "remaining_display": remaining_display,
                     "is_expiring_soon": is_expiring,
                     "expire_display": expire_display,
                     "days_left": days_left,

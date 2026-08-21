@@ -42,10 +42,12 @@ class DeepSeekProvider(BaseProvider):
         active = True
         status_str = "在线 (正常)"
         balance_str = "余额查询中"
+        cny_total = "0.00"
+        cny_grant = "0.00"
         latency = 0
 
         try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
+            async with httpx.AsyncClient(timeout=4.0, trust_env=False) as client:
                 resp = await client.get(
                     "https://api.deepseek.com/user/balance",
                     headers=headers
@@ -55,33 +57,31 @@ class DeepSeekProvider(BaseProvider):
                     data = resp.json()
                     is_avail = data.get("is_available", True)
                     balance_list = data.get("balance_infos", [])
-                    cny_total = "0.00"
-                    cny_grant = "0.00"
                     for b in balance_list:
                         if b.get("currency") == "CNY":
                             cny_total = b.get("total_balance", "0.00")
                             cny_grant = b.get("granted_balance", "0.00")
                     balance_str = f"¥{cny_total} CNY (赠送: ¥{cny_grant})"
-                    status_str = "在线 (正常)" if is_avail else "余额不足"
+                    status_str = f"在线 (余额: ¥{cny_total})" if is_avail else "余额不足"
                 else:
                     status_str = f"鉴权异常 ({resp.status_code})"
-        except Exception as e:
+        except Exception:
             latency = int((time.time() - start) * 1000)
             status_str = "在线 (正常)"
-            balance_str = "已接入官方直连"
+            balance_str = "官方直连"
 
         models_list: List[ModelItem] = [
             ModelItem(
                 id="deepseek-chat",
-                name="DeepSeek-V3 (满血版)",
+                name="DeepSeek-V3 (官方满血版)",
                 provider=self.provider_id,
                 context_window="64K",
                 is_free=False,
                 tier_desc="官方满血 V3 · 极速推理与全能通用",
                 days_left=None,
-                expire_date="按量计费",
-                total_quota="实时扣费",
-                used_quota="输入 ¥1/M, 输出 ¥2/M",
+                expire_date="按量扣费 (输入 ¥1/M, 输出 ¥2/M)",
+                total_quota=f"¥{cny_total}",
+                used_quota=f"账户余额: ¥{cny_total} CNY",
                 remaining_ratio=1.0,
                 category="chat",
                 latency_ms=latency
@@ -94,9 +94,9 @@ class DeepSeekProvider(BaseProvider):
                 is_free=False,
                 tier_desc="官方满血 R1 深度思维链 · 数学与复杂架构推演",
                 days_left=None,
-                expire_date="按量计费",
-                total_quota="实时扣费",
-                used_quota="输入 ¥4/M, 输出 ¥16/M",
+                expire_date="按量扣费 (输入 ¥4/M, 输出 ¥16/M)",
+                total_quota=f"¥{cny_total}",
+                used_quota=f"账户余额: ¥{cny_total} CNY",
                 remaining_ratio=1.0,
                 category="reasoning",
                 latency_ms=latency
@@ -111,7 +111,7 @@ class DeepSeekProvider(BaseProvider):
             latency_ms=latency,
             masked_key=masked,
             balance_info=balance_str,
-            pricing_type="按量计费 (满血版备用通道)",
+            pricing_type=f"实付充值 (余额: ¥{cny_total})",
             rate_limits="官方 API 速率限制",
             models=models_list,
             expiring_count=0

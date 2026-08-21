@@ -39,10 +39,12 @@ class SiliconFlowProvider(BaseProvider):
         active = True
         status_str = "在线 (正常)"
         balance_str = "¥0.00"
+        total = "0"
+        charge = "0"
         latency = 0
 
         try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
+            async with httpx.AsyncClient(timeout=4.0, trust_env=False) as client:
                 r_user = await client.get("https://api.siliconflow.cn/v1/user/info", headers=headers)
                 latency = int((time.time() - start) * 1000)
                 if r_user.status_code == 200:
@@ -50,6 +52,7 @@ class SiliconFlowProvider(BaseProvider):
                     total = user_data.get("totalBalance", "0")
                     charge = user_data.get("chargeBalance", "0")
                     balance_str = f"¥{total} CNY (充值: ¥{charge})"
+                    status_str = f"在线 (余额: ¥{total})"
                 else:
                     status_str = f"鉴权异常 ({r_user.status_code})"
         except Exception:
@@ -98,9 +101,9 @@ class SiliconFlowProvider(BaseProvider):
                     is_free=True,
                     tier_desc=m["tier"],
                     days_left=None,
-                    expire_date="0元永久免费专区",
-                    total_quota="0元无扣费",
-                    used_quota="0",
+                    expire_date="0元专区永久免费 (无扣费风险)",
+                    total_quota="0元免费专区",
+                    used_quota=f"0 元畅享 (账户余额: ¥{total})",
                     remaining_ratio=1.0,
                     category=m["category"],
                     latency_ms=latency
@@ -115,8 +118,8 @@ class SiliconFlowProvider(BaseProvider):
             latency_ms=latency,
             masked_key=masked,
             balance_info=balance_str,
-            pricing_type="0元永久免费专区",
-            rate_limits="0元免费模型无硬扣费，QPS 按等级",
+            pricing_type=f"0元免费专区 (余额: ¥{total})",
+            rate_limits="0元免费模型无扣费，QPS 按等级",
             models=models_list,
             expiring_count=0
         )

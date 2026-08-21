@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 魔搭社区 (ModelScope) 探测器
-覆盖魔搭 45 个 Serverless 免费模型池 (含 DeepSeek-V4-Pro / Qwen3-235B / Qwen3-Coder / 视觉多模态)
+覆盖魔搭 45 个 Serverless 免费模型池 (2,000 次 / 天 循环免费配额)
 """
 
 import time
@@ -26,7 +26,7 @@ class ModelScopeProvider(BaseProvider):
                 active=False,
                 masked_key="未配置",
                 balance_info="请在 .env 中设置 MODELSCOPE_API_KEY",
-                pricing_type="官方 Serverless 免费推理 API",
+                pricing_type="官方 Serverless 免费推理 API (2,000 次/天)",
                 rate_limits="-",
                 models=[],
                 expiring_count=0
@@ -64,7 +64,7 @@ class ModelScopeProvider(BaseProvider):
                 "name": "Qwen 3 Coder 30B (顶级编程专攻)",
                 "context": "64K",
                 "category": "coding",
-                "tier": "💻 代码专精模型 · Neovim/Avante/Pi Agent 免费写代码神器"
+                "tier": "💻 代码专精模型 · 免费写代码神器"
             },
             {
                 "id": "Qwen/Qwen3-VL-235B-A22B-Instruct",
@@ -104,14 +104,14 @@ class ModelScopeProvider(BaseProvider):
         ]
 
         try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
+            async with httpx.AsyncClient(timeout=4.0, trust_env=False) as client:
                 resp = await client.get(
                     "https://api-inference.modelscope.cn/v1/models",
                     headers=headers
                 )
                 latency = int((time.time() - start) * 1000)
                 if resp.status_code != 200:
-                    status_str = f"在线 (HTTP {resp.status_code})"
+                    status_str = f"鉴权异常 ({resp.status_code})"
         except Exception:
             latency = int((time.time() - start) * 1000)
             status_str = "在线 (正常)"
@@ -127,9 +127,9 @@ class ModelScopeProvider(BaseProvider):
                     is_free=True,
                     tier_desc=m["tier"],
                     days_left=None,
-                    expire_date="Serverless 官方常驻免费",
-                    total_quota="Serverless 并发池",
-                    used_quota="0",
+                    expire_date="每日 0 点重置 2,000 次",
+                    total_quota="2,000 次 / 天",
+                    used_quota="2,000 次 / 天 (免费配额)",
                     remaining_ratio=1.0,
                     category=m["category"],
                     latency_ms=latency
@@ -143,9 +143,9 @@ class ModelScopeProvider(BaseProvider):
             active=active,
             latency_ms=latency,
             masked_key=masked,
-            balance_info="45 个 Serverless 免费模型池 (含 235B 旗舰 & DeepSeek-V4)",
-            pricing_type="社区官方 0 元 Serverless API",
-            rate_limits="官方限速保护 / 免费并发",
+            balance_info="每日循环 2,000 次免费推理 (45 个 Serverless 模型池)",
+            pricing_type="每日 2,000 次免费循环",
+            rate_limits="每日 2000 请求 / 免费并发池",
             models=models_list,
             expiring_count=0
         )
