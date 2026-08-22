@@ -24,6 +24,7 @@ if ! flock -n 200; then
     exit 0
 fi
 echo "$$" > "$LOCKFILE"
+trap 'rm -f "$LOCKFILE"' EXIT INT TERM
 
 export HTTPS_PROXY="http://192.168.2.3:7890"
 export HTTP_PROXY="http://192.168.2.3:7890"
