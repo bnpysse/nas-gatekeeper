@@ -239,13 +239,27 @@ try:
     except Exception:
         pass
         
-    # TG Bot 服务
-    bot_active = False
-    try:
-        b_res = subprocess.run(["systemctl", "is-active", "obsidian_bot.service"], capture_output=True, text=True, timeout=2)
-        bot_active = b_res.stdout.strip() == "active"
-    except Exception:
-        pass
+    # 核心 Systemd 服务探测
+    systemd_services = []
+    target_services = [
+        {"name": "obsidian_bot.service", "label": "TG 笔记语音机器人", "tag": "Systemd 守护"},
+        {"name": "secondbrain-worker.service", "label": "图书流水线与向量引擎", "tag": "AI 图书馆后台"}
+    ]
+    for srv in target_services:
+        try:
+            s_res = subprocess.run(["systemctl", "is-active", srv["name"]], capture_output=True, text=True, timeout=2)
+            is_act = s_res.stdout.strip() == "active"
+            systemd_services.append({
+                "name": srv["name"],
+                "label": srv["label"],
+                "tag": srv["tag"],
+                "is_active": is_act,
+                "status": "Active (Running)" if is_act else "Inactive"
+            })
+        except Exception:
+            pass
+        
+    bot_active = any(s["is_active"] for s in systemd_services if s["name"] == "obsidian_bot.service")
         
     # 探测 N100 访问 brain.imdld.com 状态
     cf_latency = 0
@@ -270,6 +284,7 @@ try:
         "disk_percent": round((used / total) * 100, 1),
         "uptime_hours": uptime_hours,
         "containers": containers,
+        "systemd_services": systemd_services,
         "tg_bot_active": bot_active,
         "cf_latency": cf_latency
     }))

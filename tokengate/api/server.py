@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ..core.config import settings
 from ..core.detector import detector
 from ..core.probe import probe_engine
+from ..core.budget_guard import budget_guard
 from .routes.quotas import router as quotas_router
 from .routes.recommend import router as recommend_router
 from .routes.proxy import router as proxy_router
@@ -160,9 +161,10 @@ async def render_dashboard(request: Request):
                     "days_left": days_left,
                     "latency_ms": getattr(m, "latency_ms", 0)
                 })
-
     if isinstance(probe, Exception) or not probe:
         probe = {"nodes": {}, "services": [], "heartbeat": {}}
+
+    watermark_data = budget_guard.get_watermark_status()
 
     return templates.TemplateResponse(
         request=request,
@@ -171,6 +173,7 @@ async def render_dashboard(request: Request):
             "summary": summary_info,
             "models": flattened_models,
             "probe": probe,
+            "watermark": watermark_data,
             "version": "2.0.0"
         }
     )

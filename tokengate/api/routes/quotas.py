@@ -7,8 +7,15 @@ TokenGate 配额与健康度 API 路由
 from fastapi import APIRouter, Query
 from ...core.models import QuotaSummary, ModelItem
 from ...core.detector import detector
+from ...core.budget_guard import budget_guard
 
 router = APIRouter(prefix="/api", tags=["Quotas"])
+
+@router.get("/budget/watermark")
+@router.get("/watermark")
+async def get_budget_watermark():
+    """获取 TokenGate 2.0 每日水库实时水位与硬锁防护状态"""
+    return budget_guard.get_watermark_status()
 
 @router.get("/quotas", response_model=QuotaSummary)
 @router.get("/status", response_model=QuotaSummary)

@@ -30,7 +30,11 @@ class Settings:
 
     # API 密钥配置
     DASHSCOPE_API_KEY: str = os.environ.get("DASHSCOPE_API_KEY", "")
+    ALIBABA_CLOUD_ACCESS_KEY_ID: str = os.environ.get("ALIBABA_CLOUD_ACCESS_KEY_ID", "")
+    ALIBABA_CLOUD_ACCESS_KEY_SECRET: str = os.environ.get("ALIBABA_CLOUD_ACCESS_KEY_SECRET", "")
     VOLCENGINE_API_KEY: str = os.environ.get("VOLCENGINE_API_KEY", "")
+    VOLCENGINE_ACCESS_KEY_ID: str = os.environ.get("VOLCENGINE_ACCESS_KEY_ID", "")
+    VOLCENGINE_SECRET_ACCESS_KEY: str = os.environ.get("VOLCENGINE_SECRET_ACCESS_KEY", "")
     VOLCENGINE_ENDPOINT_ID: str = os.environ.get("VOLCENGINE_ENDPOINT_ID", "")
     VOLCENGINE_ENDPOINT_DEEPSEEK_PRO: str = os.environ.get("VOLCENGINE_ENDPOINT_DEEPSEEK_PRO", "")
     VOLCENGINE_ENDPOINT_DOUBAO: str = os.environ.get("VOLCENGINE_ENDPOINT_DOUBAO", "")
