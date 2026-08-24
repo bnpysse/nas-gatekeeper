@@ -242,8 +242,10 @@ try:
     # 核心 Systemd 服务探测
     systemd_services = []
     target_services = [
+        {"name": "library_web.service", "label": "AI 智能图书馆 (lib.donglida.com)", "tag": "Web 服务"},
+        {"name": "secondbrain-worker.service", "label": "图书流水线与向量引擎", "tag": "AI 图书馆后台"},
         {"name": "obsidian_bot.service", "label": "TG 笔记语音机器人", "tag": "Systemd 守护"},
-        {"name": "secondbrain-worker.service", "label": "图书流水线与向量引擎", "tag": "AI 图书馆后台"}
+        {"name": "rss_fetcher.timer", "label": "43源 RSS 自动抓取定时器", "tag": "24H 巡检"}
     ]
     for srv in target_services:
         try:

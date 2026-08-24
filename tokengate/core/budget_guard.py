@@ -44,6 +44,13 @@ class BudgetGuard:
         "siliconflow/deepseek-ai/DeepSeek-R1": 999_999_999,
         "siliconflow/BAAI/bge-m3": 999_999_999,
         "siliconflow/FunAudioLLM/SenseVoiceSmall": 999_999_999,
+
+        # 魔搭社区 ModelScope Serverless 免费池 (上限 2,000 次/天，安全硬顶 1,800 次/天)
+        "modelscope": 1_800,
+        "modelscope/deepseek-ai/DeepSeek-V4-Pro": 1_800,
+        "modelscope/deepseek-ai/DeepSeek-V4-Flash-0731": 1_800,
+        "modelscope/Qwen/Qwen3-235B-A22B": 1_800,
+        "modelscope/MiniMax/MiniMax-M1-80k": 1_800,
     }
 
     # 规范化映射表
@@ -66,6 +73,10 @@ class BudgetGuard:
 
         "deepseek-v3": "siliconflow/deepseek-ai/DeepSeek-V3",
         "deepseek-ai/DeepSeek-V3": "siliconflow/deepseek-ai/DeepSeek-V3",
+
+        "modelscope-v4-pro": "modelscope/deepseek-ai/DeepSeek-V4-Pro",
+        "modelscope-v4-flash": "modelscope/deepseek-ai/DeepSeek-V4-Flash-0731",
+        "modelscope-qwen3": "modelscope/Qwen/Qwen3-235B-A22B",
     }
 
     def __init__(self, db_path: Path = DB_PATH):
