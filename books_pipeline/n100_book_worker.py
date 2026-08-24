@@ -47,8 +47,8 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def get_gdrive_ebook_catalog() -> List[Dict[str, Any]]:
-    """扫描 Google Drive 中的电子书资产，返回排好序的待处理队列"""
-    cmd = ["rclone", "lsjson", "gdrive:CloseReading/EBook", "--fast-list"]
+    """递归扫描 Google Drive 中所有子目录 (AI, Rust, Python, Go 等) 的电子书资产，返回排好序的待处理队列"""
+    cmd = ["rclone", "lsjson", "-R", "gdrive:CloseReading/EBook", "--fast-list"]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
         logger.error(f"rclone 扫描失败: {res.stderr}")
@@ -60,7 +60,7 @@ def get_gdrive_ebook_catalog() -> List[Dict[str, Any]]:
     # 核心技术关键词优先权
     tech_keywords = [
         "solidjs", "svelte", "rust", "typescript", "python", "docker", "react", 
-        "deepseek", "full-stack", "vue", "algorithm", "架构", "数据结构"
+        "deepseek", "full-stack", "vue", "algorithm", "架构", "数据结构", "go", "ai"
     ]
     
     books = []
@@ -69,6 +69,7 @@ def get_gdrive_ebook_catalog() -> List[Dict[str, Any]]:
         path_str = it.get("Path", "")
         ext = Path(path_str).suffix.lower()
         if ext in valid_exts and not path_str.startswith("output/"):
+            folder_category = path_str.split("/")[0] if "/" in path_str else "通用技术"
             prio = 100
             for kw in tech_keywords:
                 if kw in path_str.lower():
@@ -82,6 +83,7 @@ def get_gdrive_ebook_catalog() -> List[Dict[str, Any]]:
                 "remote_path": f"gdrive:CloseReading/EBook/{path_str}",
                 "filename": Path(path_str).name,
                 "relative_path": path_str,
+                "category": folder_category,
                 "size_mb": size_mb,
                 "priority": prio,
                 "format": ext.replace(".", "")
