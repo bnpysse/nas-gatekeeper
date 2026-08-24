@@ -1,0 +1,147 @@
+{
+  "book_title": "Elixir and Phoenix for Beginners",
+  "generated_at": "2026-08-22 12:16:59",
+  "total_quizzes": 10,
+  "quizzes": [
+    {
+      "id": "q1",
+      "type": "single",
+      "question": "关于 BEAM 进程模型，以下哪个说法是正确的？",
+      "options": [
+        "A. BEAM 进程共享内存，通过锁机制保证并发安全",
+        "B. BEAM 进程拥有独立堆栈和消息邮箱，通过消息传递通信",
+        "C. BEAM 进程由操作系统线程直接调度，重量级",
+        "D. BEAM 进程之间通过共享变量进行数据交换"
+      ],
+      "correct_answer": "B",
+      "chapter_source": "1. Elixir 的根基：Erlang 与 BEAM；5. 并发与 OTP；底层原理解构：BEAM 进程模型",
+      "analysis": "BEAM 进程是轻量级进程，每个进程拥有独立堆栈和消息邮箱，通过消息传递通信，无共享内存。A 错误因为 BEAM 进程不共享内存，无需锁机制；C 错误因为 BEAM 进程由 BEAM 调度器调度，并非操作系统线程直接调度，且创建成本极低；D 错误因为进程间不通过共享变量交换数据，而是消息传递。"
+    },
+    {
+      "id": "q2",
+      "type": "single",
+      "question": "关于 Elixir 的不可变性，以下哪个说法是正确的？",
+      "options": [
+        "A. 变量一旦绑定后，其值可以原地修改",
+        "B. 不可变性意味着无法重新绑定变量",
+        "C. 不可变性消除了共享状态带来的副作用",
+        "D. 不可变性只适用于列表，不适用于映射"
+      ],
+      "correct_answer": "C",
+      "chapter_source": "2. 函数式编程范式 - 不可变数据",
+      "analysis": "不可变性意味着数据一旦创建不可修改，但变量可以重新绑定到新值。A 错误因为不能原地修改数据；B 错误因为变量可以重新绑定；D 错误因为所有数据结构（列表、元组、映射等）都遵循不可变性。"
+    },
+    {
+      "id": "q3",
+      "type": "single",
+      "question": "关于模式匹配，以下哪个说法是正确的？",
+      "options": [
+        "A. 模式匹配只能在函数参数中使用",
+        "B. 模式匹配在编译期被转换为决策树，提高效率",
+        "C. 模式匹配失败时会返回 nil",
+        "D. 模式匹配只能解构列表，不能解构映射"
+      ],
+      "correct_answer": "B",
+      "chapter_source": "4. 模式匹配与递归；底层原理解构：模式匹配的编译实现",
+      "analysis": "模式匹配在编译期被转换为高效的决策树，避免运行时逐条判断。A 错误因为模式匹配可用于函数头、case、cond、= 左侧等多种场景；C 错误因为匹配失败会引发 MatchError 异常，而不是返回 nil；D 错误因为模式匹配可以解构映射、元组、结构体等。"
+    },
+    {
+      "id": "q4",
+      "type": "single",
+      "question": "关于 OTP Supervisor 的重启策略，以下哪个说法是正确的？",
+      "options": [
+        "A. one_for_one 策略：一个子进程崩溃时，重启所有子进程",
+        "B. rest_for_one 策略：一个子进程崩溃时，重启该子进程及其之后启动的子进程",
+        "C. one_for_all 策略：一个子进程崩溃时，只重启该子进程",
+        "D. Supervisor 只能静态定义子进程，不能动态启动"
+      ],
+      "correct_answer": "B",
+      "chapter_source": "5. 并发与 OTP；底层原理解构：OTP 核心组件 - Supervisor",
+      "analysis": "rest_for_one 策略会重启崩溃的子进程及其之后启动的子进程。A 错误因为 one_for_one 只重启崩溃的子进程；C 错误因为 one_for_all 会重启所有子进程；D 错误因为 DynamicSupervisor 可以动态启动子进程。"
+    },
+    {
+      "id": "q5",
+      "type": "single",
+      "question": "关于 Ecto Changeset，以下哪个说法是正确的？",
+      "options": [
+        "A. Changeset 用于定义数据库表结构",
+        "B. Changeset 用于执行数据库迁移",
+        "C. Changeset 用于数据校验与转换，保证数据完整性",
+        "D. Changeset 用于构建类型安全的查询"
+      ],
+      "correct_answer": "C",
+      "chapter_source": "8. Web 开发：Phoenix 与 Ecto；底层原理解构：Ecto 数据层 - Changeset",
+      "analysis": "Changeset 负责数据校验与转换，保证数据完整性。A 错误因为 Schema 定义表结构；B 错误因为 Migrations 执行数据库变更；D 错误因为 Query DSL 构建类型安全的查询。"
+    },
+    {
+      "id": "q6",
+      "type": "multiple",
+      "question": "以下哪些属于 OTP 核心组件？",
+      "options": [
+        "A. GenServer",
+        "B. Supervisor",
+        "C. Plug",
+        "D. Task"
+      ],
+      "correct_answer": "A,B,D",
+      "chapter_source": "5. 并发与 OTP；底层原理解构：OTP 核心组件",
+      "analysis": "GenServer、Supervisor、Task 都是 OTP 核心组件。Plug 是 Phoenix 的中间件规范，不属于 OTP 核心组件。"
+    },
+    {
+      "id": "q7",
+      "type": "multiple",
+      "question": "关于 Phoenix 请求生命周期，以下哪些组件参与处理请求？",
+      "options": [
+        "A. Endpoint",
+        "B. Router",
+        "C. Controller",
+        "D. Ecto"
+      ],
+      "correct_answer": "A,B,C",
+      "chapter_source": "8. Web 开发：Phoenix 与 Ecto；底层原理解构：Phoenix 请求生命周期",
+      "analysis": "请求进入 Endpoint → Router → Controller → View/Template → 响应。Ecto 是数据层，不直接参与请求生命周期，除非在 Controller 中调用。"
+    },
+    {
+      "id": "q8",
+      "type": "multiple",
+      "question": "关于宏（Macros）的正确说法有哪些？",
+      "options": [
+        "A. 宏在编译时展开，接收 AST 并返回 AST",
+        "B. 宏可以执行任意副作用，不影响编译",
+        "C. 宏会降低代码可读性，应仅在确实减少重复时使用",
+        "D. quote 用于将代码转为 AST，unquote 用于注入值"
+      ],
+      "correct_answer": "A,C,D",
+      "chapter_source": "7. 元编程；底层原理解构：宏与编译时执行；案例 4：元编程的合理使用",
+      "analysis": "A 正确，宏在编译阶段展开；C 正确，宏降低可读性，需谨慎使用；D 正确，quote/unquote 是核心机制。B 错误，宏中应避免执行副作用，保持编译期纯净。"
+    },
+    {
+      "id": "q9",
+      "type": "case",
+      "question": "实战情境：你正在构建一个类 Uber 的实时拼车应用，需要处理高并发位置更新和司机匹配。以下哪种设计最符合 Elixir 的最佳实践？",
+      "options": [
+        "A. 使用单个全局 GenServer 存储所有位置数据，方便统一管理",
+        "B. 使用 ETS 或专用 GenServer 分片存储位置数据，避免单点瓶颈",
+        "C. 将位置数据存储在进程字典中，提高访问速度",
+        "D. 使用共享内存数据库存储位置，所有进程直接读写"
+      ],
+      "correct_answer": "B",
+      "chapter_source": "案例 1：构建类 Uber 的实时拼车应用 - 避坑点",
+      "analysis": "最佳实践是使用 ETS 或专用 GenServer 分片，避免单个进程存储全局状态成为瓶颈。A 错误因为单个全局 GenServer 会成为瓶颈；C 错误因为进程字典不适合跨进程共享；D 错误因为 Elixir 无共享内存，且共享内存数据库不符合 BEAM 模型。"
+    },
+    {
+      "id": "q10",
+      "type": "case",
+      "question": "实战情境：在 TDD 实践中，你需要测试一段并发代码，该代码会向测试进程发送消息。以下哪种测试方式最可靠？",
+      "options": [
+        "A. 使用 Process.sleep 等待固定时间后检查状态",
+        "B. 使用 assert_receive 等待消息，避免依赖时序",
+        "C. 直接检查 GenServer 的内部状态",
+        "D. 在测试中禁用并发，改为顺序执行"
+      ],
+      "correct_answer": "B",
+      "chapter_source": "案例 3：TDD 实践与测试驱动开发 - 避坑点",
+      "analysis": "测试并发代码时，应使用 assert_receive 等待消息，避免依赖时序。A 错误因为固定 sleep 不可靠且慢；C 错误因为直接检查内部状态可能破坏封装且无法验证消息传递；D 错误因为并发是核心特性，不应禁用。"
+    }
+  ]
+}

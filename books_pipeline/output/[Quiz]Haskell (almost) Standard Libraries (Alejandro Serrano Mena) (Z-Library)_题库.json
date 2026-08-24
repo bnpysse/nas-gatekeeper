@@ -1,0 +1,147 @@
+{
+  "book_title": "Haskell (almost) Standard Libraries (Alejandro Serrano Mena) (Z-Library)",
+  "generated_at": "2026-08-21 16:47:22",
+  "total_quizzes": 10,
+  "quizzes": [
+    {
+      "id": "q1",
+      "type": "single",
+      "question": "关于替代Prelude（如relude、classy-prelude）的使用，以下哪项是正确的？",
+      "options": [
+        "A. 库开发中可以使用relude来提供更安全的函数",
+        "B. 应用开发中可以使用relude，但库开发中应避免使用替代Prelude",
+        "C. 替代Prelude可以随意使用，不会影响依赖传递",
+        "D. 使用替代Prelude必须在所有项目中统一使用classy-prelude"
+      ],
+      "correct_answer": "B",
+      "chapter_source": "生态定位与设计哲学-替代Prelude共识",
+      "analysis": "书籍明确指出：应用开发可使用relude、classy-prelude、protolude等替代Prelude，但库开发禁止依赖替代Prelude，否则会向依赖方传递大量冗余依赖，提升编译时间与版本冲突概率。选项A错误，因为库开发禁止使用；选项C错误，替代Prelude会传递依赖；选项D过于绝对，并非必须统一使用classy-prelude。"
+    },
+    {
+      "id": "q2",
+      "type": "single",
+      "question": "关于Foldable的length方法与容器专用size函数，以下说法正确的是？",
+      "options": [
+        "A. Foldable.length对所有容器都是O(1)",
+        "B. Set的size函数是O(n)，因为需要遍历",
+        "C. 对于Set，应优先使用其专用size函数，因为Foldable.length默认是O(n)",
+        "D. Foldable.length和size函数性能相同"
+      ],
+      "correct_answer": "C",
+      "chapter_source": "反向避坑清单-坑2：用Foldable.length取容器大小",
+      "analysis": "书籍避坑清单明确指出：Foldable的默认length实现为O(n)全遍历，而Set/Map/Seq等容器提供O(1)的专用size函数，应优先使用专用size。选项A错误，Foldable.length默认是O(n)；选项B错误，Set的size是O(1)；选项D错误，两者性能不同。"
+    },
+    {
+      "id": "q3",
+      "type": "single",
+      "question": "在Cabal文件中，关于stanza（library/executable/test-suite）的依赖声明，以下哪项是正确的？",
+      "options": [
+        "A. library stanza中声明的依赖会自动传递给executable stanza",
+        "B. 每个stanza的依赖完全隔离，需要分别声明",
+        "C. 只需要在顶层声明一次依赖，所有stanza共享",
+        "D. test-suite stanza不能有自己的依赖"
+      ],
+      "correct_answer": "B",
+      "chapter_source": "构建与依赖机制-Cabal文件核心结构",
+      "analysis": "书籍明确说明：Cabal文件由独立stanza组成，stanza之间的依赖完全隔离，需分别声明。选项A、C、D均与这一原则相悖。"
+    },
+    {
+      "id": "q4",
+      "type": "single",
+      "question": "自定义数据类型要作为HashSet的键，需要派生哪些类型类？",
+      "options": [
+        "A. 只需要Eq",
+        "B. 需要Eq和Ord",
+        "C. 需要Eq和Hashable",
+        "D. 需要Ord和Hashable"
+      ],
+      "correct_answer": "C",
+      "chapter_source": "核心抽象实现-Hashable泛型派生原理",
+      "analysis": "HashSet基于Hashable约束，需要元素可生成稳定哈希，同时需要Eq用于比较相等。书籍案例3中派生的是Eq, Show, Generic, Hashable，其中Eq和Hashable是必需的，Ord不是必须的。因此选项C正确。"
+    },
+    {
+      "id": "q5",
+      "type": "single",
+      "question": "关于容器模块的导入规范，以下哪项是正确的？",
+      "options": [
+        "A. 应该使用`import Data.Set`全量导入，方便使用所有函数",
+        "B. 应该使用`import Data.Set (Set)`导入类型，`import qualified Data.Set as Set`导入操作函数",
+        "C. 应该使用`import qualified Data.Set`，然后所有函数都用`Set.`前缀，类型也用`Set.Set`",
+        "D. 应该避免使用qualified导入，因为会降低代码可读性"
+      ],
+      "correct_answer": "B",
+      "chapter_source": "核心抽象实现-容器的三类约束模型",
+      "analysis": "书籍明确推荐标准导入风格为“类型裸导入+操作限名导入”，即`import Data.Set (Set)`和`import qualified Data.Set as Set`。选项A全量导入会导致函数名冲突；选项C虽然可行但不是推荐风格；选项D错误，qualified导入是解决命名冲突的推荐方式。"
+    },
+    {
+      "id": "q6",
+      "type": "multiple",
+      "question": "以下哪些库属于Haskell事实标准库中“文本与字节”分层的核心库？",
+      "options": [
+        "A. text",
+        "B. bytestring",
+        "C. aeson",
+        "D. vector"
+      ],
+      "correct_answer": "A,B,D",
+      "chapter_source": "事实标准库全景分层-文本与字节",
+      "analysis": "书籍分层表中“文本与字节”包括text、text-icu、regex-*、bytestring、vector、unboxed vector。aeson属于“计算与效果”分层（JSON序列化），因此选项C错误。A、B、D均正确。"
+    },
+    {
+      "id": "q7",
+      "type": "multiple",
+      "question": "以下哪些做法属于书籍中提到的“反向避坑清单”中的错误做法？",
+      "options": [
+        "A. 在生产代码中使用Prelude的head函数",
+        "B. 使用Foldable.length获取Set的大小",
+        "C. 全量导入Data.Set模块",
+        "D. 在库开发中依赖relude"
+      ],
+      "correct_answer": "A,B,C,D",
+      "chapter_source": "反向避坑清单",
+      "analysis": "书籍避坑清单包括：坑1生产代码使用Prelude偏函数（head等），坑2用Foldable.length取容器大小，坑3全量导入容器模块，坑8库开发引入重依赖（包括替代Prelude）。因此A、B、C、D均为错误做法，全选。"
+    },
+    {
+      "id": "q8",
+      "type": "multiple",
+      "question": "关于foldl库的特点，以下哪些描述是正确的？",
+      "options": [
+        "A. 它可以将多个折叠组合成一个，实现单次遍历完成多个聚合",
+        "B. 它通过Applicative组合多个折叠",
+        "C. 它要求使用者手动管理状态元组",
+        "D. 它避免了多次遍历同一容器"
+      ],
+      "correct_answer": "A,B,D",
+      "chapter_source": "核心抽象实现-foldl库的单次遍历优化",
+      "analysis": "书籍指出foldl库将折叠抽象为独立值，通过Applicative组合多个折叠，库内部自动管理状态元组，保证单次遍历完成所有聚合。因此A、B、D正确，C错误（自动管理，不是手动）。"
+    },
+    {
+      "id": "q9",
+      "type": "case",
+      "question": "假设你正在开发一个Haskell库，该库需要处理大量文本数据，并且需要提供JSON序列化功能。同时，你希望库的依赖尽可能轻量，避免给下游用户带来过多依赖。以下哪种依赖选择最符合书籍推荐的最佳实践？",
+      "options": [
+        "A. 依赖relude作为Prelude替代，依赖aeson进行JSON处理，依赖text处理文本",
+        "B. 使用base原生Prelude，依赖aeson进行JSON处理，依赖text处理文本",
+        "C. 使用classy-prelude作为Prelude替代，依赖aeson进行JSON处理，依赖bytestring处理文本",
+        "D. 使用base原生Prelude，依赖json包进行JSON处理，依赖text处理文本"
+      ],
+      "correct_answer": "B",
+      "chapter_source": "生态定位与设计哲学-替代Prelude共识；反向避坑清单-坑4：选包只看名称匹配",
+      "analysis": "书籍明确说库开发禁止依赖替代Prelude（relude/classy-prelude等），应坚持使用base原生Prelude，以避免传递大量冗余依赖。JSON处理的事实标准是aeson，不是名为json的包（坑4）。文本处理推荐text。因此B正确。A错误（库开发用relude），C错误（库开发用classy-prelude，且文本用bytestring不如text适合Unicode文本），D错误（json包不是事实标准）。"
+    },
+    {
+      "id": "q10",
+      "type": "case",
+      "question": "你需要在Haskell中实现一个功能：对一个整数列表，计算其长度、总和、最大值，并且要求只遍历列表一次。以下哪种实现方式最符合书籍推荐的高效做法？",
+      "options": [
+        "A. 使用三个独立的foldr分别计算长度、总和、最大值",
+        "B. 手写一个递归函数，同时累积长度、总和、最大值",
+        "C. 使用foldl库，通过Applicative组合Fold.length、Fold.sum、Fold.maximum",
+        "D. 使用map将列表转换为元组，然后分别计算"
+      ],
+      "correct_answer": "C",
+      "chapter_source": "核心抽象实现-foldl库的单次遍历优化",
+      "analysis": "书籍介绍了foldl库，通过Applicative组合多个折叠，库内部自动管理状态元组，保证单次遍历完成所有聚合。A会遍历三次，B虽然单次遍历但手写样板代码不可复用，D不合理。因此C最符合推荐做法。"
+    }
+  ]
+}
