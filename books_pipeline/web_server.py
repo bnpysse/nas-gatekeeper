@@ -1517,6 +1517,7 @@ async def index_page():
                     'VolcEngine': { badge: 'bg-rose-950/80 text-rose-300 border-rose-800/40', bar: 'from-rose-500 to-pink-500', name: '🌋 火山方舟 (VolcEngine)' },
                     'SiliconFlow': { badge: 'bg-cyan-950/80 text-cyan-300 border-cyan-800/40', bar: 'from-cyan-500 to-teal-500', name: '⚡ 硅基流动 (SiliconFlow)' },
                     'DashScope': { badge: 'bg-amber-950/80 text-amber-300 border-amber-800/40', bar: 'from-amber-500 to-orange-500', name: '☁️ 阿里百炼 (DashScope)' },
+                    'ModelScope': { badge: 'bg-purple-950/80 text-purple-300 border-purple-800/40', bar: 'from-purple-500 to-indigo-500', name: '🌌 魔搭社区 (ModelScope)' },
                     'DeepSeek': { badge: 'bg-blue-950/80 text-blue-300 border-blue-800/40', bar: 'from-blue-500 to-indigo-500', name: '🐋 DeepSeek 官方' }
                 };
 
