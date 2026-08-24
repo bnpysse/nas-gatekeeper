@@ -1,0 +1,26 @@
+# ==============================================================================
+# ERTH Assistant & Omni Stock Radar - Caddy Reverse Proxy & HTTPS Configuration
+# ==============================================================================
+{
+    admin off
+}
+
+erth.donglida.xyz {
+    tls /etc/caddy/certs/erth.donglida.xyz.pem /etc/caddy/certs/erth.donglida.xyz.key
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # 1. Telegram 临时语音识别驿站
+    handle_path /bot_audio/* {
+        root * /var/www/bot_audio
+        file_server
+    }
+
+    # 2. 天眼全息股票智导系统 (Omni Streamlit App with native WebSocket)
+    reverse_proxy 127.0.0.1:8501
+}

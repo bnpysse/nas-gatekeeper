@@ -36,11 +36,11 @@ def cosine_similarity(v1, v2):
     return dot / (mag1 * mag2)
 
 def get_embedding_client() -> AsyncOpenAI:
-    # 强制直连阿里百炼，不走外部代理
+    sf_key = os.getenv("SILICONFLOW_API_KEY", "sk-wewpjlyfvwflfcqivobyumvhybqldextibizkxtkmajkkqvs")
     return AsyncOpenAI(
-        http_client=httpx.AsyncClient(proxy=None),
-        api_key=Config.DASHSCOPE_API_KEY,
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+        http_client=httpx.AsyncClient(proxy=None, timeout=30.0),
+        api_key=sf_key,
+        base_url="https://api.siliconflow.cn/v1"
     )
 
 def float_array_to_blob(float_array: list[float]) -> bytes:
@@ -105,23 +105,19 @@ async def _execute_turso(sql: str, args: list = None):
         return parsed_rows
 
 async def get_embedding(text: str) -> list[float]:
-    """使用阿里百炼 text-embedding-v3 生成 1024 维向量"""
-    if not Config.DASHSCOPE_API_KEY:
-        logger.warning("未配置 DASHSCOPE_API_KEY，跳过 Embedding 生成。")
-        return []
-        
+    """使用 SiliconFlow BAAI/bge-m3 生成 1024 维向量 (0元原生免费版)"""
     client = get_embedding_client()
     text = text.replace("\n", " ")
     
     try:
         response = await client.embeddings.create(
-            input=[text[:2000]],
-            model=Config.DASHSCOPE_EMBEDDING_MODEL or "text-embedding-v3",
-            dimensions=1024
+            model="BAAI/bge-m3",
+            input=text,
+            encoding_format="float"
         )
         return response.data[0].embedding
     except Exception as e:
-        logger.error(f"生成 Embedding 失败: {e}")
+        logger.error(f"SiliconFlow BGE-M3 生成 Embedding 失败: {e}")
         return []
 
 def chunk_markdown(doc_title: str, content: str, max_chars: int = 800) -> list[dict]:

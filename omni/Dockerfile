@@ -1,16 +1,17 @@
 # Omni Radar V6.0 - Multi-stage build
-# Base: local python:3.12-slim (offline)
+# Base: python:3.12-slim
 
 # Stage 1: Build dependencies
 FROM python:3.12-slim AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-
 WORKDIR /app
+
+# 通过清华源高速安装 uv，避免大陆服务器拉取 ghcr.io 镜像超时
+RUN pip install --no-cache-dir uv -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 COPY pyproject.toml uv.lock ./
 
-# Install deps using Tsinghua mirror (faster in China)
+# 安装依赖
 RUN uv sync --frozen --no-install-project \
     --index-url https://pypi.tuna.tsinghua.edu.cn/simple
 

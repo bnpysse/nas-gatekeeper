@@ -18,3 +18,10 @@ scratch/
 **/.env.local
 notes_backup_from_n100/
 **/node_modules/
+*.key
+*.pem
+*.crt
+*.cert
+*.pfx
+*.p12
+.aider*

@@ -87,8 +87,33 @@ if df.is_empty():
 
 stock_name = next((t.name for t in targets if t.code == sel_code), sel_code)
 
+import json
+from core.ai_advisor import query_ai_staff_report
+
 # ==========================================
 # 全 JS 交互组件 (图表 + HUD 一体化，鼠标悬停实时联动)
 # ==========================================
 fig = build_radar_figure(df, stock_name, dim5_mode=sel_dim5)
 render_radar_with_hud(fig, df, stock_name, dim5_mode=sel_dim5, height=800)
+
+# ==========================================
+# 参谋部 AI 穿透审计面板 (DeepSeek-V4-Pro / Gemini 驱动)
+# ==========================================
+st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+with st.expander("🤖 天眼参谋部 · AI 深度量化穿透审计 (DeepSeek-V4-Pro / 每日200万循环补给)", expanded=False):
+    c1, c2 = st.columns([2.5, 5.5])
+    with c1:
+        run_ai = st.button("⚡ 召唤 AI 参谋一键穿透审计", use_container_width=True)
+    with c2:
+        st.markdown("<span style='font-size:12px; color:#9CA3AF;'>依据 Stock.csv 物理截面、五维共振状态与黄金反向钳形铁律执行穿透式推演。</span>", unsafe_allow_html=True)
+    
+    if run_ai:
+        latest_row = df.tail(1).to_dicts()[0]
+        latest_json = json.dumps(latest_row, ensure_ascii=False, default=str)
+        with st.spinner("🛰️ 天眼静默，参谋部正在执行截面物理真值对冲与多维共振穿透..."):
+            report = query_ai_staff_report(sel_code, stock_name, latest_json)
+            st.markdown(f"""
+            <div style="background:linear-gradient(135deg, #111827, #1F2937); padding:14px 18px; border-radius:8px; border:1px solid #374151; border-left:4px solid #FFD700; color:#E5E7EB; line-height:1.6; font-size:13px; margin-top:8px;">
+            {report.replace(chr(10), '<br>')}
+            </div>
+            """, unsafe_allow_html=True)

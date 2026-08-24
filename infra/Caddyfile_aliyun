@@ -1,0 +1,112 @@
+# ==============================================================================
+# Multi-Domain Caddy Configuration (Omni Stock Radar & TokenGate)
+# Supports *.donglida.com (Cloudflare Origin CA - 15 Years) & *.donglida.xyz
+# ==============================================================================
+{
+    admin off
+}
+
+# 1. 股票量化大屏专属域名 (https://stock.donglida.com & https://stock.donglida.xyz)
+stock.donglida.com {
+    tls /etc/caddy/certs/donglida.com.pem /etc/caddy/certs/donglida.com.key
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    reverse_proxy 127.0.0.1:8501
+}
+
+stock.donglida.xyz {
+    tls /etc/caddy/certs/donglida.xyz.pem /etc/caddy/certs/donglida.xyz.key
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    reverse_proxy 127.0.0.1:8501
+}
+
+# 2. TokenGate 算力门禁专属域名 (https://tg.donglida.com & https://tg.donglida.xyz)
+tg.donglida.com {
+    tls /etc/caddy/certs/donglida.com.pem /etc/caddy/certs/donglida.com.key
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    reverse_proxy 127.0.0.1:8800
+}
+
+tg.donglida.xyz {
+    tls /etc/caddy/certs/donglida.xyz.pem /etc/caddy/certs/donglida.xyz.key
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    reverse_proxy 127.0.0.1:8800
+}
+
+# 3. ERTH 运维与 Side-car 域名 (https://erth.donglida.com & https://erth.donglida.xyz)
+erth.donglida.com {
+    tls /etc/caddy/certs/donglida.com.pem /etc/caddy/certs/donglida.com.key
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    handle_path /bot_audio/* {
+        root * /var/www/bot_audio
+        file_server
+    }
+
+    reverse_proxy 127.0.0.1:8501
+}
+
+erth.donglida.xyz {
+    tls /etc/caddy/certs/donglida.xyz.pem /etc/caddy/certs/donglida.xyz.key
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    handle_path /bot_audio/* {
+        root * /var/www/bot_audio
+        file_server
+    }
+
+    reverse_proxy 127.0.0.1:8501
+}
+
+# 4. 根域名与 www 导航
+donglida.com, www.donglida.com {
+    tls /etc/caddy/certs/donglida.com.pem /etc/caddy/certs/donglida.com.key
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    redir https://stock.donglida.com permanent
+}

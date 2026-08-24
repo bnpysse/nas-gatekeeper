@@ -2,176 +2,259 @@
     {
         "name": "Hacker News Top (硅谷极客风向标)",
         "url": "https://hnrss.org/frontpage",
-        "type": "substack"
+        "type": "link_aggregator",
+        "needs_proxy": false
+    },
+    {
+        "name": "极客公园 (前沿科技创新与商业探索)",
+        "url": "https://www.geekpark.net/rss",
+        "type": "substack",
+        "needs_proxy": false
+    },
+    {
+        "name": "虎嗅网 (科技与商业深度观察)",
+        "url": "https://rss.huxiu.com/",
+        "type": "substack",
+        "needs_proxy": false
+    },
+    {
+        "name": "爱范儿 ifanr (前沿科技与消费电子)",
+        "url": "https://www.ifanr.com/feed",
+        "type": "substack",
+        "needs_proxy": false
+    },
+    {
+        "name": "少数派 sspai (数字工具与生产力思维)",
+        "url": "https://sspai.com/feed",
+        "type": "substack",
+        "needs_proxy": false
+    },
+    {
+        "name": "开源中国 (开源生态与软件工程前沿)",
+        "url": "https://www.oschina.net/news/rss",
+        "type": "substack",
+        "needs_proxy": false
+    },
+    {
+        "name": "Solidot (奇客科技与极客资讯)",
+        "url": "https://www.solidot.org/index.rss",
+        "type": "substack",
+        "needs_proxy": false
+    },
+    {
+        "name": "FT中文网 (全球商业与经济深度观察)",
+        "url": "https://www.ftchinese.com/rss/feed",
+        "type": "substack",
+        "needs_proxy": true
+    },
+    {
+        "name": "BBC 中文网 (全球经贸与商业科技)",
+        "url": "https://feeds.bbci.co.uk/zhongwen/simp/rss.xml",
+        "type": "substack",
+        "needs_proxy": true
     },
     {
         "name": "Paul Graham Essays (硅谷教父商业与认知随笔)",
         "url": "http://www.paulgraham.com/rss.html",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Simon Willison (AI 实用工程化)",
         "url": "https://simonwillison.net/atom/everything/",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Interconnects (Nathan Lambert 前沿强化学习与开源模型)",
         "url": "https://www.interconnects.ai/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "One Useful Thing (Ethan Mollick 沃顿商学院 AI 实践)",
         "url": "https://www.oneusefulthing.org/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Collaborative Fund (Morgan Housel 金钱与商业哲学)",
-        "url": "https://collabfund.com/blog/feed",
-        "type": "substack"
+        "url": "https://collabfund.com/feed",
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "The Generalist (商业巨头与科技帝国深度拆解)",
         "url": "https://www.generalist.com/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Not Boring by Packy McCormick (前沿商业战略与科技)",
         "url": "https://www.notboring.co/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Visual Capitalist (全球商业与宏观数据图表)",
         "url": "https://www.visualcapitalist.com/feed/",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "SemiAnalysis (全球半导体产业链与AI算力)",
         "url": "https://newsletter.semianalysis.com/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Noahpinion (Noah Smith 宏观智库)",
         "url": "https://www.noahpinion.blog/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "The Macro Compass (Alf 宏观流动性与资产配置)",
         "url": "https://themacrocompass.substack.com/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": true
     },
     {
         "name": "Doomberg (大宗商品与能源宏观智库)",
         "url": "https://doomberg.substack.com/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Apricitas Economics (宏观劳动力与通胀数据)",
         "url": "https://www.apricitas.io/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "The Last Bear Standing (深度信贷与影子银行)",
         "url": "https://thelastbearstanding.substack.com/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Net Interest (金融机构与银行业深度拆解)",
         "url": "https://www.netinterest.co/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Young Money (投资心理学与商业洞察)",
         "url": "https://www.youngmoney.co/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "The Pragmatic Engineer (顶级软件工程师)",
         "url": "https://blog.pragmaticengineer.com/rss/",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Lenny's Newsletter (产品与增长深度)",
         "url": "https://www.lennysnewsletter.com/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Stratechery (全球科技商业战略)",
         "url": "https://stratechery.com/feed/",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "ChinaTalk (全球看中国科技与商业)",
         "url": "https://www.chinatalk.media/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Import AI (Jack Clark AI政策与技术前沿)",
         "url": "https://importai.substack.com/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Ahead of AI (Sebastian Raschka 机器学习与大模型)",
         "url": "https://magazine.sebastianraschka.com/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Latent Space (AI 工程师社区深度)",
         "url": "https://www.latent.space/feed",
-        "type": "substack"
+        "type": "substack",
+        "needs_proxy": false
     },
     {
         "name": "Principles by Ray Dalio",
         "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCqvaXJ1K3HheTPNjH-KpwXQ",
-        "type": "youtube"
+        "type": "youtube",
+        "needs_proxy": true
     },
     {
         "name": "Patrick Boyle",
         "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCASM0cgfkJxQ1ICmRilfHLw",
-        "type": "youtube"
+        "type": "youtube",
+        "needs_proxy": true
     },
     {
         "name": "The Plain Bagel",
         "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCFCEuCsyWP0YkP3CZ3Mr01Q",
-        "type": "youtube"
+        "type": "youtube",
+        "needs_proxy": true
     },
     {
         "name": "Ben Felix (Rational Reminder)",
         "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCOErWFfNOQzXsgE7f5S_ULw",
-        "type": "youtube"
+        "type": "youtube",
+        "needs_proxy": true
     },
     {
         "name": "Fireship",
         "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCsBjURrPoezykLs9EqgamOA",
-        "type": "youtube"
+        "type": "youtube",
+        "needs_proxy": true
     },
     {
         "name": "Two Minute Papers",
         "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCbfYPyITQ-7l4upoX8nvctg",
-        "type": "youtube"
+        "type": "youtube",
+        "needs_proxy": true
     },
     {
         "name": "r/LocalLLaMA",
         "url": "https://www.reddit.com/r/LocalLLaMA/top/.rss?t=day",
-        "type": "reddit"
+        "type": "reddit",
+        "needs_proxy": true
     },
     {
         "name": "r/CursorAI",
         "url": "https://www.reddit.com/r/CursorAI/top/.rss?t=day",
-        "type": "reddit"
+        "type": "reddit",
+        "needs_proxy": true
     },
     {
         "name": "r/SecurityAnalysis",
         "url": "https://www.reddit.com/r/SecurityAnalysis/top/.rss?t=day",
-        "type": "reddit"
+        "type": "reddit",
+        "needs_proxy": true
     },
     {
         "name": "r/Economics",
         "url": "https://www.reddit.com/r/Economics/top/.rss?t=day",
-        "type": "reddit"
+        "type": "reddit",
+        "needs_proxy": true
     },
     {
         "name": "r/investing",
         "url": "https://www.reddit.com/r/investing/top/.rss?t=day",
-        "type": "reddit"
+        "type": "reddit",
+        "needs_proxy": true
     }
 ]

@@ -181,6 +181,8 @@ def sync_obsidian_to_nextra(vault_dir: Path, nextra_dir: Path):
     categories = [
         {"folder": "Inbox", "target": "inbox", "title": "📥 闪念归档 (Inbox)"},
         {"folder": "Auto_Clippings", "target": "auto-clippings", "title": "🤖 智能剪报 (Auto Clippings)"},
+        {"folder": "Weread", "target": "weread", "title": "📚 微信读书 (Weread)"},
+        {"folder": "WeRead", "target": "weread", "title": "📚 微信读书 (Weread)"},
         {"folder": "TG_Clippings", "target": "tg-clippings", "title": "📱 TG 频道精选 (TG Clippings)"},
         {"folder": "Auto_Summary", "target": "auto-summary", "title": "📊 综合日报 (Auto Summary)"},
     ]

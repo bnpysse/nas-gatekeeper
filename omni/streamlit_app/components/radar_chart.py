@@ -293,30 +293,26 @@ def _render_dim1(fig, df, x, dates, hover_labels):
     hccyf13 = df["HCCYF13"].to_list()
     close = df["Close"].to_list()
     fund = df["Sum_132d"].to_list()
-    cd = [[h] for h in hover_labels]
 
     # LFS 蓝线 → 左主轴
     fig.add_trace(go.Scatter(
         x=x, y=lfs, mode="lines", name="LFS(底座)",
         line=dict(color=COLORS["lfs"], width=2.5),
-        customdata=cd,
-        hovertemplate="%{customdata[0]}<br>LFS: %{y:.2f}<extra></extra>",
+        hovertemplate="LFS: %{y:.2f}<extra></extra>",
     ), row=1, col=1, secondary_y=False)
 
     # HCCYF13 黄线 → 左主轴
     fig.add_trace(go.Scatter(
         x=x, y=hccyf13, mode="lines", name="HCCYF13",
         line=dict(color=COLORS["hccyf13"], width=1.2),
-        customdata=cd,
-        hovertemplate="%{customdata[0]}<br>VMA: %{y:.2f}<extra></extra>",
+        hovertemplate="VMA: %{y:.2f}<extra></extra>",
     ), row=1, col=1, secondary_y=False)
 
     # Close 白线 → 第三轴 (左2, 灰色刻度)
     close_trace = go.Scatter(
         x=x, y=close, mode="lines", name="Close",
         line=dict(color=COLORS["close"], width=1),
-        customdata=cd,
-        hovertemplate="%{customdata[0]}<br>Close: %{y:.2f}<extra></extra>",
+        hovertemplate="Close: %{y:.2f}<extra></extra>",
     )
     fig.add_trace(close_trace, row=1, col=1, secondary_y=False)
     fig.data[-1].yaxis = "y11"
@@ -329,7 +325,7 @@ def _render_dim1(fig, df, x, dates, hover_labels):
         showlegend=False, hoverinfo="skip",
     ), row=1, col=1, secondary_y=False)
 
-    # 资金面 → 右轴
+    # 资金面 → 右轴 (作为该维度的首部展示唯一的日期/天数 Header)
     _add_fund_area(fig, x, fund, row=1, alpha=0.25, label="半年132d", hover_labels=hover_labels)
 
 
@@ -339,7 +335,6 @@ def _render_dim2(fig, df, x, dates, hover_labels):
     cys34 = df["CYS34"].to_list()
     turnover = df["Turnover"].to_list()
     fund = df["Sum_66d"].to_list()
-    cd = [[h] for h in hover_labels]
 
     # Z' 柱状图 → 左主轴
     bar_colors = []
@@ -355,22 +350,20 @@ def _render_dim2(fig, df, x, dates, hover_labels):
         x=x, y=z_prime, name="Z' 动能",
         marker=dict(color=bar_colors, opacity=0.9),
         width=0.6,
-        customdata=cd,
-        hovertemplate="%{customdata[0]}<br>Z': %{y:.2f}<extra></extra>",
+        hovertemplate="Z': %{y:.2f}<extra></extra>",
     ), row=2, col=1, secondary_y=False)
 
     fig.add_hline(y=10, line=dict(color=COLORS["z_gold"], width=1, dash="dash"),
                   opacity=0.6, row=2, col=1)
 
-    # 资金面 → 右轴
+    # 资金面 → 右轴 (保留唯一日期 Header)
     _add_fund_area(fig, x, fund, row=2, alpha=0.18, label="季66d", hover_labels=hover_labels)
 
     # CYS34 → 第三轴 (左2, 天蓝刻度)
     fig.add_trace(go.Scatter(
         x=x, y=cys34, mode="lines", name="CYS34",
         line=dict(color=COLORS["cys34"], width=1.5),
-        customdata=cd,
-        hovertemplate="%{customdata[0]}<br>CYS34: %{y:.2f}<extra></extra>",
+        hovertemplate="CYS34: %{y:.2f}<extra></extra>",
     ), row=2, col=1, secondary_y=False)
     fig.data[-1].yaxis = "y12"
 
@@ -380,25 +373,22 @@ def _render_dim3(fig, df, x, dates, hover_labels):
     ptr = df["PTR"].to_list()
     dpos = df["D_Pos"].to_list()
     fund = df["Sum_22d"].to_list()
-    cd = [[h] for h in hover_labels]
 
     # PTR 橙线 → 左主轴
     fig.add_trace(go.Scatter(
         x=x, y=ptr, mode="lines", name="PTR(单日)",
         line=dict(color=COLORS["ptr"], width=1.5),
-        customdata=cd,
-        hovertemplate="%{customdata[0]}<br>PTR: %{y:.2f}%<extra></extra>",
+        hovertemplate="PTR: %{y:.2f}%<extra></extra>",
     ), row=3, col=1, secondary_y=False)
 
-    # 资金面 → 右轴
+    # 资金面 → 右轴 (保留唯一日期 Header)
     _add_fund_area(fig, x, fund, row=3, alpha=0.12, label="月22d", hover_labels=hover_labels)
 
     # D_Pos → 第三轴 (左2, 粉色刻度)
     fig.add_trace(go.Scatter(
         x=x, y=dpos, mode="lines", name="D_Pos",
         line=dict(color=COLORS["dpos"], width=1.5),
-        customdata=cd,
-        hovertemplate="%{customdata[0]}<br>D_Pos: %{y:.2f}<extra></extra>",
+        hovertemplate="D_Pos: %{y:.2f}<extra></extra>",
     ), row=3, col=1, secondary_y=False)
     fig.data[-1].yaxis = "y13"
 
@@ -408,28 +398,25 @@ def _render_dim4(fig, df, x, dates, hover_labels):
     y_ovp = df["Y_Overlap"].to_list()
     asr = df["ASR"].to_list()
     fund = df["Sum_5d"].to_list()
-    cd = [[h] for h in hover_labels]
 
     # Y_Overlap 紫线 → 左主轴
     fig.add_trace(go.Scatter(
         x=x, y=y_ovp, mode="lines", name="Y_Overlap",
         line=dict(color=COLORS["y_overlap"], width=1.5),
-        customdata=cd,
-        hovertemplate="%{customdata[0]}<br>Y_Ovp: %{y:.2f}<extra></extra>",
+        hovertemplate="Y_Ovp: %{y:.2f}<extra></extra>",
     ), row=4, col=1, secondary_y=False)
 
     fig.add_hline(y=60, line=dict(color=COLORS["y_overlap"], width=1, dash="dot"),
                   opacity=0.5, row=4, col=1)
 
-    # 资金面 → 右轴
+    # 资金面 → 右轴 (保留唯一日期 Header)
     _add_fund_area(fig, x, fund, row=4, alpha=0.10, label="周5d", hover_labels=hover_labels)
 
     # ASR → 第三轴 (左2, 青色刻度)
     fig.add_trace(go.Scatter(
         x=x, y=asr, mode="lines", name="ASR",
         line=dict(color=COLORS["asr"], width=2),
-        customdata=cd,
-        hovertemplate="%{customdata[0]}<br>ASR: %{y:.2f}<extra></extra>",
+        hovertemplate="ASR: %{y:.2f}<extra></extra>",
     ), row=4, col=1, secondary_y=False)
     fig.data[-1].yaxis = "y14"
 
@@ -444,6 +431,7 @@ def _render_dim5(fig, df, x, dates, mode: int, hover_labels):
         t_vals = df[t_col].to_list()
         p_vals = df[p_col].to_list()
 
+        # 仅第一条曲线带日期 Header
         fig.add_trace(go.Scatter(
             x=x, y=t_vals, mode="lines", name=f"T_MA{mode}(大众)",
             line=dict(color=COLORS["turnover_ma"], width=1.5),
@@ -455,8 +443,7 @@ def _render_dim5(fig, df, x, dates, mode: int, hover_labels):
         fig.add_trace(go.Scatter(
             x=x, y=p_vals, mode="lines", name=f"P_MA{mode}(活筹)",
             line=dict(color=COLORS["ptr_ma"], width=1.5),
-            customdata=cd,
-            hovertemplate=f"%{{customdata[0]}}<br>P_MA{mode}: %{{y:.2f}}<extra></extra>",
+            hovertemplate=f"P_MA{mode}: %{{y:.2f}}<extra></extra>",
         ), row=5, col=1, secondary_y=True)
     else:
         t5 = df["Turnover_MA5"].to_list()
@@ -464,6 +451,7 @@ def _render_dim5(fig, df, x, dates, mode: int, hover_labels):
         p5 = df["PTR_MA5"].to_list()
         p20 = df["PTR_MA20"].to_list()
 
+        # 仅 T_MA5 带日期 Header
         fig.add_trace(go.Scatter(
             x=x, y=t5, mode="lines", name="T_MA5(突击)",
             line=dict(color=COLORS["turnover_ma"], width=1),
@@ -475,22 +463,19 @@ def _render_dim5(fig, df, x, dates, mode: int, hover_labels):
         fig.add_trace(go.Scatter(
             x=x, y=t20, mode="lines", name="T_MA20(底牌)",
             line=dict(color="#60A5FA", width=2, dash="dash"),
-            customdata=cd,
-            hovertemplate="%{customdata[0]}<br>T_MA20: %{y:.2f}<extra></extra>",
+            hovertemplate="T_MA20: %{y:.2f}<extra></extra>",
         ), row=5, col=1, secondary_y=False)
 
         fig.add_trace(go.Scatter(
             x=x, y=p5, mode="lines", name="P_MA5(突击)",
             line=dict(color=COLORS["ptr_ma"], width=1),
-            customdata=cd,
-            hovertemplate="%{customdata[0]}<br>P_MA5: %{y:.2f}<extra></extra>",
+            hovertemplate="P_MA5: %{y:.2f}<extra></extra>",
         ), row=5, col=1, secondary_y=True)
 
         fig.add_trace(go.Scatter(
             x=x, y=p20, mode="lines", name="P_MA20(底牌)",
             line=dict(color="#F87171", width=2, dash="dash"),
-            customdata=cd,
-            hovertemplate="%{customdata[0]}<br>P_MA20: %{y:.2f}<extra></extra>",
+            hovertemplate="P_MA20: %{y:.2f}<extra></extra>",
         ), row=5, col=1, secondary_y=True)
 
 

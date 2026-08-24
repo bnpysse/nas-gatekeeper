@@ -1,0 +1,13 @@
+from core.knowledge.tactical_bible import (
+    INDICATOR_DICTIONARY,
+    TACTICAL_LAWS,
+    COMMANDER_PORTFOLIO,
+    SYSTEM_PROMPT_STAFF_EXPERT,
+)
+
+__all__ = [
+    "INDICATOR_DICTIONARY",
+    "TACTICAL_LAWS",
+    "COMMANDER_PORTFOLIO",
+    "SYSTEM_PROMPT_STAFF_EXPERT",
+]

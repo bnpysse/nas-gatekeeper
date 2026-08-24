@@ -3,10 +3,13 @@
 
 """
 Markdown 笔记落盘模块：带有标准 YAML Frontmatter 的 Markdown 笔记生成与云端同步
+支持分流落库至 Inbox（音视频）与 Auto_Clippings（微信/网页/专栏剪藏）
 """
 
 import re
 import sys
+import os
+import shutil
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +27,149 @@ def sanitize_filename(name: str) -> str:
     clean = re.sub(r'[\\/:*?"<>|?#%&+=？!！()]', '_', name)
     return clean.strip(' .')[:60].strip(' .')
 
+def get_autoclippings_dir() -> Path:
+    """获取 Auto_Clippings 目录"""
+    p = Config.OBSIDIAN_INBOX_PATH.parent / "Auto_Clippings"
+    if p.exists():
+        return p
+    default_p = Path("/opt/obsidian-brain-data/Auto_Clippings")
+    default_p.mkdir(parents=True, exist_ok=True)
+    return default_p
+
+async def save_to_obsidian_autoclippings(
+    title: str,
+    url: str,
+    raw_content: str,
+    summary_content: str,
+    source_type: str = "WeChat",
+    account_name: str = "微信精选"
+) -> dict:
+    """
+    将微信文章/头条文章完整双轨归档至 Auto_Clippings:
+    1. Raw_微信_【公众号】_标题.md (完整原文沉淀)
+    2. Auto_简报_微信_【公众号】_标题.md (AI 深度拆解报告)
+    """
+    clippings_dir = get_autoclippings_dir()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    clean_title = sanitize_filename(title)
+    clean_account = sanitize_filename(account_name) or "微信精选"
+    
+    # 1. 准备 RAG 向量与双向链接
+    embedding = []
+    try:
+        from services.rag import get_embedding, search_similar_notes, upsert_note, init_db
+        from services.ai import get_volcengine_async_client
+        await init_db()
+        embedding = await get_embedding(summary_content)
+        similar_notes = []
+        if embedding:
+            similar_notes = await search_similar_notes(embedding, limit=3)
+        
+        if similar_notes:
+            rag_section = "\n\n## 🔗 AI 知识库双向关联\n"
+            for n in similar_notes:
+                clean_target = re.sub(r'\[.*?\]', '', n.get("title", "")).strip(' _-')
+                rag_section += f"- [[{clean_target}]]\n"
+            summary_content += rag_section
+    except Exception as e:
+        logger.warning(f"RAG 双链计算跳过: {e}")
+
+    # 2. 写入 Raw 原文完整归档
+    raw_filename = f"Raw_微信_{clean_account}_{clean_title}.md"
+    raw_path = clippings_dir / raw_filename
+    
+    raw_yaml = f"""---
+title: "Raw_{clean_title}"
+date: "{now_str}"
+created: "{now_str}"
+url: "{url}"
+source: "微信公众号 - {account_name}"
+author: "{account_name}"
+tags:
+  - 微信精选
+  - 微信文章_全文
+  - "{clean_account}"
+status: processed
+---
+
+# 原文归档：{title}
+
+> [!NOTE] 微信文章元数据
+> - **来源公众号**: `{account_name}`
+> - **原文链接**: [{url}]({url})
+> - **收录时间**: `{now_str}`
+
+---
+
+{raw_content}
+"""
+    with open(raw_path, "w", encoding="utf-8") as f:
+        f.write(raw_yaml)
+    logger.info(f"✅ 微信原文已沉淀至 Auto_Clippings: {raw_path}")
+
+    # 3. 写入 Auto 简报深度分析
+    summary_filename = f"Auto_简报_微信_{clean_account}_{clean_title}.md"
+    summary_path = clippings_dir / summary_filename
+    
+    summary_yaml = f"""---
+title: "简报_{clean_title}"
+date: "{now_str}"
+created: "{now_str}"
+url: "{url}"
+source: "微信公众号 - {account_name}"
+author: "{account_name}"
+tags:
+  - 微信精选_深度解读
+  - 智能简报
+  - "{clean_account}"
+status: completed
+---
+
+# 深度精读简报：{title}
+
+> [!TIP] 智能情报卡片
+> - **公众号**: `{account_name}`
+> - **原文链接**: [点击阅读微信原文]({url})
+> - **提炼引擎**: `Volcengine DeepSeek-V4 (AIOps)`
+
+---
+
+{summary_content}
+"""
+    with open(summary_path, "w", encoding="utf-8") as f:
+        f.write(summary_yaml)
+    logger.info(f"✅ 微信深度简报已保存至 Auto_Clippings: {summary_path}")
+
+    # 4. RAG 数据库入库
+    try:
+        if embedding:
+            from services.rag import upsert_note
+            await upsert_note(summary_filename, f"简报_{title}", str(summary_path), summary_content, embedding)
+    except Exception as e:
+        logger.warning(f"Turso 向量入库异常: {e}")
+
+    # 5. 云盘与 Quartz 镜像同步
+    try:
+        import subprocess
+        # 同步至 Google Drive
+        subprocess.run(["rclone", "copy", str(raw_path), "gdrive:Auto_Clippings/"], check=False, capture_output=True)
+        subprocess.run(["rclone", "copy", str(summary_path), "gdrive:Auto_Clippings/"], check=False, capture_output=True)
+        # 同步至 Quartz
+        quartz_clippings = Path("/opt/SecondBrain-Quartz/content/notes/Auto_Clippings")
+        if quartz_clippings.parent.exists():
+            quartz_clippings.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(raw_path, quartz_clippings / raw_filename)
+            shutil.copy2(summary_path, quartz_clippings / summary_filename)
+    except Exception as e:
+        logger.warning(f"同步或镜像异常: {e}")
+
+    return {
+        "raw_path": raw_path,
+        "summary_path": summary_path,
+        "title": title,
+        "account": account_name
+    }
+
 async def save_to_obsidian_inbox(title: str, url: str, content: str, source_type: str = "Video") -> Path:
     """格式化并保存 Markdown 笔记到 Obsidian Inbox，并触发 OneDrive 同步"""
     inbox_dir = Config.OBSIDIAN_INBOX_PATH
@@ -35,7 +181,9 @@ async def save_to_obsidian_inbox(title: str, url: str, content: str, source_type
         from services.ai import get_volcengine_async_client
         await init_db()
         embedding = await get_embedding(content)
-        similar_notes = await search_similar_notes(embedding, limit=3)
+        similar_notes = []
+        if embedding:
+            similar_notes = await search_similar_notes(embedding, limit=3)
         
         rag_section = ""
         if similar_notes:
@@ -125,17 +273,14 @@ status: unread
     try:
         import subprocess
         logger.info("☁️ 正在通过 rclone 同步至 Google Drive (根目录)...")
-        # 优先同步到 Google Drive (你期望的主力)
         subprocess.run([
             "rclone", "copy", str(file_path), "gdrive:Inbox/"
         ], check=False, capture_output=True, text=True)
         
         logger.info("☁️ 正在通过 rclone 同步至 OneDrive (备份)...")
-        # 备份同步到 OneDrive
         subprocess.run([
             "rclone", "copy", str(file_path), "onedrive:应用/remotely-save/notes/Inbox/"
         ], check=False, capture_output=True, text=True)
-        logger.info(f"☁️ 双云盘同步完成!")
     except Exception as e:
         logger.warning(f"云盘同步异常: {e}")
 
@@ -144,9 +289,7 @@ status: unread
         quartz_inbox = Path("/opt/SecondBrain-Quartz/content/notes/Inbox")
         if quartz_inbox.parent.exists():
             quartz_inbox.mkdir(parents=True, exist_ok=True)
-            import shutil
             shutil.copy2(file_path, quartz_inbox / filename)
-            logger.info(f"✨ 已实时镜像至 Quartz 笔记目录: {quartz_inbox / filename}")
     except Exception as q_err:
         logger.warning(f"Quartz 镜像异常: {q_err}")
 

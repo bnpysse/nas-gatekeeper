@@ -27,6 +27,11 @@ if tg_bot_dir not in sys.path:
 import requests
 import feedparser
 import bs4
+try:
+    import trafilatura
+except ImportError:
+    trafilatura = None
+
 from database import is_processed, mark_processed, init_db
 from processor import analyze_youtube_transcript, analyze_github_repo, analyze_reddit_post, analyze_blog_post
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -35,42 +40,14 @@ from youtube_transcript_api.formatters import TextFormatter
 # 知识库落地路径：优先落库到 Obsidian 的 Auto_Clippings
 VAULT_PATH = os.getenv("VAULT_PATH", "/opt/obsidian-brain-data/Auto_Clippings" if os.path.exists("/opt/obsidian-brain-data") else str(Path.home() / "dev/nas-gatekeeper/SecondBrain-Quartz/content/notes/Auto_Clippings"))
 
-# 默认内置扩展信息源
-DEFAULT_RSS_FEEDS = [
-    # 顶级财经与宏观分析 (YouTube)
-    {"name": "小lin说", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UClq1oF_XReK0VrtzDr-2udA"], "type": "youtube"},
-    {"name": "巫师财经", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UC55ahPQ7m5iJdVWcOfmuE6g"], "type": "youtube"},
-    {"name": "王剑每日观察", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UC8UCbiPrm2zN9nZHKdTevZA"], "type": "youtube"},
-    {"name": "Principles by Ray Dalio", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UCqvaXJ1K3HheTPNjH-KpwXQ"], "type": "youtube"},
-    {"name": "Patrick Boyle", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UCASM0cgfkJxQ1ICmRilfHLw"], "type": "youtube"},
-    {"name": "The Plain Bagel", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UCFCEuCsyWP0YkP3CZ3Mr01Q"], "type": "youtube"},
-    {"name": "Ben Felix (Rational Reminder)", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UCOErWFfNOQzXsgE7f5S_ULw"], "type": "youtube"},
-    {"name": "Economics Explained", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UCVWX3F3DrTvDKa0LRilQoQQ"], "type": "youtube"},
-    {"name": "All-In Podcast", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UCESLZhusAkFfsNsApnjF_Cg"], "type": "youtube"},
-    {"name": "Forward Guidance", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UC0E-St9TloQ7TAu8hn1xJ9w"], "type": "youtube"},
-    {"name": "Real Vision Finance", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UCBH5VZE_Y4F3CMcPIzPEB5A"], "type": "youtube"},
-    {"name": "CNBC Television", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UCvJJ_dzjViJCoLf5uKUTwoA"], "type": "youtube"},
-    {"name": "AI Explained", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UCNJ1Ymd5yWuZZxgIE3t2E3g"], "type": "youtube"},
-    {"name": "Fireship", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UCsBjURrPoezykLs9EqgamOA"], "type": "youtube"},
-    {"name": "Two Minute Papers", "urls": ["https://www.youtube.com/feeds/videos.xml?channel_id=UCbfYPyITQ-7l4upoX8nvctg"], "type": "youtube"},
-    
-    # 科技与财经大咖 (Substack/Blog)
-    {"name": "SemiAnalysis", "urls": ["https://www.semianalysis.com/feed"], "type": "substack"},
-    {"name": "Morgan Stanley Insights", "urls": ["https://www.morganstanley.com/ideas.rss"], "type": "substack"},
-    {"name": "Noahpinion (Economics)", "urls": ["https://www.noahpinion.blog/feed"], "type": "substack"},
-    {"name": "The Pragmatic Engineer", "urls": ["https://blog.pragmaticengineer.com/rss/"], "type": "substack"},
-    {"name": "Lenny's Newsletter", "urls": ["https://www.lennysnewsletter.com/feed"], "type": "substack"},
-    {"name": "Stratechery", "urls": ["https://stratechery.com/feed/"], "type": "substack"},
-
-    # 社区热点
-    {"name": "r/SecurityAnalysis", "urls": ["https://www.reddit.com/r/SecurityAnalysis/top/.rss?t=day"], "type": "reddit"},
-    {"name": "r/Economics", "urls": ["https://www.reddit.com/r/Economics/top/.rss?t=day"], "type": "reddit"},
-    {"name": "r/investing", "urls": ["https://www.reddit.com/r/investing/top/.rss?t=day"], "type": "reddit"},
-    {"name": "r/wallstreetbets", "urls": ["https://www.reddit.com/r/wallstreetbets/top/.rss?t=day"], "type": "reddit"},
-    {"name": "r/LocalLLaMA", "urls": ["https://www.reddit.com/r/LocalLLaMA/top/.rss?t=day"], "type": "reddit"},
-    {"name": "r/CursorAI", "urls": ["https://www.reddit.com/r/CursorAI/top/.rss?t=day"], "type": "reddit"},
-    {"name": "r/hardware", "urls": ["https://www.reddit.com/r/hardware/top/.rss?t=day"], "type": "reddit"}
-]
+PROXIES = {
+    "http": "http://192.168.2.3:7890",
+    "https": "http://192.168.2.3:7890"
+}
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+}
 
 def load_feeds():
     """从 feeds.json 动态载入订阅源"""
@@ -83,12 +60,17 @@ def load_feeds():
                 for it in items:
                     u = it.get("url")
                     urls = [u] if isinstance(u, str) else it.get("urls", [])
-                    result.append({"name": it["name"], "urls": urls, "type": it["type"]})
+                    result.append({
+                        "name": it["name"],
+                        "urls": urls,
+                        "type": it.get("type", "substack"),
+                        "needs_proxy": it.get("needs_proxy", False)
+                    })
                 print(f"📋 成功从 feeds.json 载入 {len(result)} 个订阅源")
                 return result
         except Exception as e:
             print(f"⚠️ 加载 feeds.json 异常: {e}")
-    return DEFAULT_RSS_FEEDS
+    return []
 
 LOW_VALUE_PATTERNS = [
     r'^\s*(\+1|赞|点赞|顶|mark|收藏|mark一下|蹲|留名|支持|好帖|分|好|不错|nb|666|牛逼)\s*$',
@@ -102,8 +84,45 @@ def clean_reddit_content(raw_text: str) -> str:
     text = re.sub(r'\[link\]\s+\[comments\]', '', text, flags=re.IGNORECASE)
     return text.strip()
 
-def is_substantive_content(title: str, text: str, min_chars: int = 100) -> bool:
-    """判断抓取的内容是否具备实质性的知识/分析价值，坚决过滤纯点赞、纯跟帖、空内容"""
+def fetch_full_article_content(url: str, min_chars: int = 300) -> str:
+    """访问目标原文网页，深度抓取并提取清洗后的正文主体"""
+    if not url or not url.startswith("http"):
+        return ""
+        
+    try:
+        # 优先走代理抓取
+        resp = requests.get(url, headers=DEFAULT_HEADERS, proxies=PROXIES, timeout=15)
+        if resp.status_code != 200:
+            # 降级直连重试
+            resp = requests.get(url, headers=DEFAULT_HEADERS, timeout=10)
+            
+        if resp.status_code == 200 and resp.text:
+            # 1. 优先使用 trafilatura 专业文章提取引擎
+            if trafilatura:
+                extracted = trafilatura.extract(resp.text, include_comments=False, include_tables=True)
+                if extracted and len(extracted.strip()) >= min_chars:
+                    return extracted.strip()
+            
+            # 2. 降级使用 BeautifulSoup 解析
+            soup = bs4.BeautifulSoup(resp.text, 'html.parser')
+            # 移除常见噪音标签
+            for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'noscript']):
+                tag.decompose()
+            article_elem = soup.find('article') or soup.find('main') or soup.find('div', class_=re.compile(r'(content|post|article|entry)', re.I))
+            if article_elem:
+                text = article_elem.get_text(separator='\n\n', strip=True)
+            else:
+                text = soup.get_text(separator='\n\n', strip=True)
+                
+            if len(text.strip()) >= min_chars:
+                return text.strip()
+    except Exception as e:
+        print(f"⚠️ 抓取原文网页异常 ({url}): {e}")
+        
+    return ""
+
+def is_substantive_content(title: str, text: str, min_chars: int = 200) -> bool:
+    """判断抓取的内容是否具备实质性的知识/分析价值，坚决过滤纯点赞、纯跟帖、空内容与仅含链接的元数据"""
     if not text or not text.strip():
         return False
     
@@ -114,7 +133,11 @@ def is_substantive_content(title: str, text: str, min_chars: int = 100) -> bool:
         if re.match(pat, clean_text, re.IGNORECASE) or re.match(pat, title, re.IGNORECASE):
             return False
             
-    # 如果正文只有极短的几句话（< min_chars），判定为无实质营养内容
+    # 如果正文只有 Hacker News 的元数据链接行，判定为无实质正文
+    if "Article URL:" in clean_text and "Comments URL:" in clean_text and len(clean_text) < 400:
+        return False
+        
+    # 如果有效正文字符不足 min_chars，判定为无实质营养内容
     if len(clean_text) < min_chars:
         return False
         
@@ -150,7 +173,6 @@ def enhance_with_rag_and_dual_links(title: str, content: str, filename: str) -> 
                     
         return content, embedding
     except Exception as e:
-        print(f"⚠️ RAG 双链生成跳过: {e}")
         return content, []
 
 def save_to_vault(filename: str, content: str, title: str = ""):
@@ -159,8 +181,8 @@ def save_to_vault(filename: str, content: str, title: str = ""):
         l.strip() for l in content.splitlines() 
         if l.strip() and not l.startswith("---") and not l.startswith("title:") and not l.startswith("tags:") and not l.startswith("date:") and not l.startswith("rag_processed:")
     ]
-    if len("\n".join(body_lines).strip()) < 50:
-        print(f"⚠️ 拦截空内容文件落库: {filename}")
+    if len("\n".join(body_lines).strip()) < 100:
+        print(f"⚠️ 拦截空内容/无效元数据文件落库: {filename}")
         return
 
     # 1. 向量化与双向链接生成
@@ -182,12 +204,13 @@ def save_to_vault(filename: str, content: str, title: str = ""):
             loop.run_until_complete(upsert_note(filename, title or filename, str(file_path), enhanced_content, embedding))
             loop.close()
         except Exception as e:
-            print(f"⚠️ Turso 向量入库异常: {e}")
+            pass
 
 def get_youtube_transcript(video_id: str) -> str:
     """优先使用 YouTube 官方字幕接口获取中/英文字幕"""
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        # YouTubeTranscriptApi 必须通过代理访问
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id, proxies=PROXIES)
         formatter = TextFormatter()
         try:
             transcript = transcript_list.find_transcript(['zh-Hans', 'zh-Hant', 'zh-CN', 'zh', 'en', 'en-US', 'en-GB']).fetch()
@@ -262,7 +285,7 @@ def process_youtube_entry(feed_name: str, entry):
         mark_processed(video_id, "youtube")
         return
         
-    print(f"🧠 正在使用 本地Qwen / 云端DeepSeek 提炼《{title}》视频精华与逐字稿...")
+    print(f"🧠 正在使用火山方舟 DeepSeek 提炼《{title}》视频精华与逐字稿...")
     translated_text, analysis = analyze_youtube_transcript(title, feed_name, video_url, transcript)
     
     safe_title = re.sub(r'[\\/*?:"<>|?#%&+=？!！()]', "", title).strip(' .')[:60].strip(' .')
@@ -313,39 +336,58 @@ def process_reddit_entry(feed_name: str, entry):
     
     mark_processed(video_id, "reddit")
 
-def process_substack_entry(feed_name: str, entry):
-    """处理 Substack/专家专栏文章"""
+def extract_target_url_from_entry(entry) -> str:
+    """从 RSS 条目中智能提取真实目标文章的 URL"""
+    url = getattr(entry, "link", "")
+    # 如果是 hnrss 等链接聚合源，从 description 或 content 寻找目标 Article URL
+    raw_html = entry.content[0].value if 'content' in entry else getattr(entry, 'summary', '')
+    if raw_html:
+        m = re.search(r'Article URL:\s*<a href="([^"]+)"', raw_html, re.I)
+        if m:
+            return m.group(1).strip()
+    return url
+
+def process_article_entry(feed_name: str, entry, is_link_aggregator: bool = False):
+    """处理专栏文章或聚合链接条目（严格保证必须抓取到真实原文全文）"""
     video_id = entry.id if 'id' in entry else entry.link
-    url = entry.link
     title = entry.title
+    target_url = extract_target_url_from_entry(entry)
     
     if is_processed(video_id):
         return
-        
-    raw_html = entry.content[0].value if 'content' in entry else entry.summary
+
+    # 1. 尝试从 RSS 提取正文
+    raw_html = entry.content[0].value if 'content' in entry else getattr(entry, 'summary', '')
     soup = bs4.BeautifulSoup(raw_html, 'html.parser')
     text_content = soup.get_text(separator='\n\n', strip=True)
     
-    # 过滤空内容或过短文章
-    if not is_substantive_content(title, text_content, min_chars=150):
-        print(f"⏭️ 过滤正文过短或空文章: 《{title}》 (有效字符: {len(text_content)})")
-        mark_processed(video_id, "substack")
+    # 2. 如果是链接聚合源 (如 Hacker News) 或 RSS 提取的正文过短 (只有链接/摘要)，自动深度抓取原文
+    if is_link_aggregator or not is_substantive_content(title, text_content, min_chars=350):
+        print(f"🌐 正在从原文链接深度抓取正文主体: {target_url}")
+        full_text = fetch_full_article_content(target_url, min_chars=300)
+        if full_text:
+            text_content = full_text
+            
+    # 3. 严格校验实质内容：如果抓取失败、遇到付费墙(Paywall)或依然没有有效正文，坚决拦截丢弃！
+    if not is_substantive_content(title, text_content, min_chars=300):
+        print(f"⏭️ 拦截无实质正文或付费墙文章: 《{title}》 (无法提取真实有效正文，跳过生成)")
+        mark_processed(video_id, "article_skipped")
         return
 
-    print(f"\n📰 [大咖专栏] 发现新文章: 《{title}》 ({feed_name})")
+    print(f"\n📰 [大咖专栏] 成功提取全文 ({len(text_content)} 字符): 《{title}》 ({feed_name})")
     print(f"🧠 正在深度提炼 {feed_name} 文章...")
-    translated_text, analysis = analyze_blog_post(title, feed_name, url, f"【文章标题】：{title}\n\n【文章正文】：\n{text_content}")
+    translated_text, analysis = analyze_blog_post(title, feed_name, target_url, f"【文章标题】：{title}\n\n【文章正文】：\n{text_content}")
     
     safe_title = re.sub(r'[\\/*?:"<>|?#%&+=？!！()]', "", title).strip(' .')[:60].strip(' .')
     date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    raw_md = f"---\ntitle: \"{safe_title}_全翻译\"\ndate: {date_str}\nurl: \"{url}\"\nsource: \"{feed_name}\"\ntags: [大咖视点_全文翻译, {feed_name.replace(' ', '_')}]\n---\n\n{translated_text}"
+    raw_md = f"---\ntitle: \"{safe_title}_全翻译\"\ndate: {date_str}\nurl: \"{target_url}\"\nsource: \"{feed_name}\"\ntags: [大咖视点_全文翻译, {feed_name.replace(' ', '_')}]\n---\n\n{translated_text}"
     save_to_vault(f"Raw_翻译_{safe_title}.md", raw_md, title=f"{safe_title}_全翻译")
     
-    final_md = f"---\ntitle: \"{safe_title}_简报\"\ndate: {date_str}\nurl: \"{url}\"\nsource: \"{feed_name}\"\ntags: [大咖视点_深度解读, {feed_name.replace(' ', '_')}]\n---\n\n{analysis}"
+    final_md = f"---\ntitle: \"{safe_title}_简报\"\ndate: {date_str}\nurl: \"{target_url}\"\nsource: \"{feed_name}\"\ntags: [大咖视点_深度解读, {feed_name.replace(' ', '_')}]\n---\n\n{analysis}"
     save_to_vault(f"Auto_简报_{safe_title}.md", final_md, title=f"{safe_title}_简报")
     
-    mark_processed(video_id, "substack")
+    mark_processed(video_id, "article")
 
 def process_github_trending():
     """扫描 Github 每日趋势热榜 (Top 5)"""
@@ -402,21 +444,17 @@ def process_github_trending():
             mark_processed(repo_id, "github")
     except Exception as e:
         print(f"⚠️ Github 榜单获取失败: {e}")
-    except Exception as e:
-        print(f"⚠️ Github 榜单获取失败: {e}")
 
-def fetch_and_parse_feed(url: str):
-    """使用 requests 配合代理和真实浏览器 UA 拉取 RSS 内容，防止 Cloudflare / 防爬拦截"""
-    proxies = {
-        "http": "http://192.168.2.3:7890",
-        "https": "http://192.168.2.3:7890"
-    }
+def fetch_and_parse_feed(url: str, needs_proxy: bool = False):
+    """使用 requests 配合代理和真实浏览器 UA 拉取 RSS 内容"""
+    proxies = PROXIES if needs_proxy else None
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "application/rss+xml, application/xml, text/xml, application/atom+xml, text/html;q=0.9, */*;q=0.8"
     }
     try:
-        r = requests.get(url, headers=headers, proxies=proxies, timeout=20)
+        # 如果声明需要代理，直接使用代理
+        r = requests.get(url, headers=headers, proxies=proxies, timeout=15)
         if r.status_code == 200:
             return feedparser.parse(r.text)
         else:
@@ -424,14 +462,15 @@ def fetch_and_parse_feed(url: str):
             return feedparser.parse(r.text)
     except Exception as e:
         try:
-            # 直连重试
-            r = requests.get(url, headers=headers, timeout=15)
+            # 自动切换代理/直连重试
+            alt_proxies = None if needs_proxy else PROXIES
+            r = requests.get(url, headers=headers, proxies=alt_proxies, timeout=15)
             return feedparser.parse(r.text)
         except Exception:
-            return feedparser.parse(url, agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+            return feedparser.parse(url, agent=DEFAULT_HEADERS["User-Agent"])
 
 def run_rss_fetcher():
-    print("🚀 Gatekeeper 全球顶级财经与科技多源 RSS 自动提炼引擎启动！")
+    print("🚀 Gatekeeper 全球顶级财经与科技多源 RSS 自动提炼引擎启动 (强化全文抓取模式)！")
     try:
         init_db()
     except Exception as e:
@@ -442,9 +481,9 @@ def run_rss_fetcher():
     # 1. 抓取 RSS 源
     for feed in feeds:
         for url in feed["urls"]:
-            print(f"📡 正在拉取: {feed['name']} ({url})")
+            print(f"\n📡 正在拉取: {feed['name']} ({url})")
             try:
-                parsed_feed = fetch_and_parse_feed(url)
+                parsed_feed = fetch_and_parse_feed(url, needs_proxy=feed.get("needs_proxy", False))
                 count = 0
                 limit = 1 if "top/.rss" in url else (3 if feed["type"] == "youtube" else 3)
                 
@@ -460,9 +499,12 @@ def run_rss_fetcher():
                         elif feed["type"] == "reddit":
                             process_reddit_entry(feed["name"], entry)
                             count += 1
-                            time.sleep(1.0) # 防 Reddit 429 频控
-                        elif feed["type"] == "substack":
-                            process_substack_entry(feed["name"], entry)
+                            time.sleep(2.0)  # 防 Reddit 429 频控
+                        elif feed["type"] == "link_aggregator":
+                            process_article_entry(feed["name"], entry, is_link_aggregator=True)
+                            count += 1
+                        else:  # substack, blog
+                            process_article_entry(feed["name"], entry, is_link_aggregator=False)
                             count += 1
                     except Exception as entry_err:
                         print(f"⚠️ 处理单个条目异常 《{getattr(entry, 'title', '未知')}》: {entry_err}")

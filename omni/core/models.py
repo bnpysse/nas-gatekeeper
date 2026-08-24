@@ -13,6 +13,7 @@ NUMERIC_COLS: list[str] = [
     "Main_Pct", "Dare_Pct", "ASR", "CYS34", "LFS",
     "Turnover", "PTR", "D_Pos", "Close", "HCCYF13",
     "Y_Overlap", "Open", "High", "Low",
+    "X70", "X90", "Z_Profit", "DeltaX",
 ]
 
 # ==========================================

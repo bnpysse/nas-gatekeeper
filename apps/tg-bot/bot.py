@@ -22,7 +22,7 @@ if str(project_root) not in sys.path:
 if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.request import HTTPXRequest
 
 import google.generativeai as genai
@@ -42,14 +42,15 @@ from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     ContextTypes,
     filters,
 )
 
 from config import Config
 from services.downloader import is_video_url, extract_url, download_audio_from_url
-from services.ai import analyze_audio_with_sensevoice_and_multi_stream, analyze_web_url_stream
-from services.obsidian import save_to_obsidian_inbox
+from services.ai import analyze_audio_with_sensevoice_and_multi_stream, analyze_web_url_stream, extract_and_analyze_wechat_article
+from services.obsidian import save_to_obsidian_inbox, save_to_obsidian_autoclippings
 from services.cleaner import auto_prune_inbox
 
 logging.basicConfig(
@@ -72,10 +73,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "🧠 *SecondBrain-Flow 第二大脑自动化系统已上线！*\n\n"
         "你可以直接向我发送：\n"
-        "1. 🎥 **今日头条/西瓜/抖音/B站/YouTube 视频链接**：提取音轨由 百炼 (DashScope) 生成【核心总结 + 中文逐字稿】，自动落库 Obsidian 与 Google Drive。\n"
-        "2. 📰 **知乎/微信公众号/网页链接**：抓取正文并由 百炼 (DashScope) 提炼要点。\n"
-        "3. 🎙️ **文本/闪念**：自动记录落地。\n\n"
-        "⚙️ 指令：\n"
+        "1. 🍵 **微信公众号文章链接**：抓取 100% 完整原文并由 DeepSeek-V4 提炼深度简报，双轨归档至 `Auto_Clippings`。\n"
+        "2. 🎥 **头条/抖音/B站/YouTube 视频链接**：提取音轨由 百炼 (DashScope) 生成【核心总结 + 中文逐字稿】。\n"
+        "3. 📰 **知乎/商业专栏/普通网页链接**：抓取正文并由多模型提炼要点。\n"
+        "4. 🎙️ **文本/闪念**：自动记录落地。\n\n"
+        "⚙️ 指令清单：\n"
+        "/weread - 📚 微信读书划线与精读报告自动同步指南\n"
+        "/quiz [主题] - 📚 AI 智能图书馆动态无限出题与深度题解\n"
         "/quota - ⚡ 探测 TokenGate 全网免费算力与临期资产\n"
         "/chat <内容> - 🧠 TokenGate 智能调度大模型对话\n"
         "/ask <问题> - 🔍 RAG 语义检索 Obsidian 知识库\n"
@@ -288,7 +292,51 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await tracker.step(4, "正文抓取失败", "ERROR", f"`{str(web_err)[:60]}`")
                 await msg.edit_text(f"❌ 链接处理失败:\n{tracker.get_summary_trace()}")
 
-    # 2. 普通网页链接
+    # 2. 微信公众号专属文章链接 (精准识别 mp.weixin.qq.com)
+    elif "mp.weixin.qq.com" in url or "weixin.qq.com" in url:
+        msg = await update.message.reply_text("🍵 收到微信公众号文章，正在初始化专属抓取引擎...")
+        tracker = TaskTracker(msg, base_title="SecondBrain-Flow 微信文章深度提炼")
+        await tracker.step(1, "接收微信公众号链接", "OK", f"`{url[:45]}...`")
+        try:
+            await tracker.step(2, "正在抓取 100% 微信文章全文", "RUNNING", "Trafilatura 深度解析中...")
+            ai_result = await extract_and_analyze_wechat_article(url)
+            if ai_result.get("is_error"):
+                raise ValueError(ai_result.get("summary_content"))
+
+            await tracker.step(2, "微信全文抓取成功", "OK", f"《{ai_result['title'][:25]}...》({len(ai_result['raw_content'])}字)")
+
+            await tracker.step(3, "AI 深度拆解与提炼", "OK", "火山引擎 DeepSeek-V4 结构化分析完成")
+
+            await tracker.step(4, "归档至 Auto_Clippings 并同步", "RUNNING", "双轨落库 (原文 + 深度简报)...")
+            archive_info = await save_to_obsidian_autoclippings(
+                title=ai_result["title"],
+                url=url,
+                raw_content=ai_result["raw_content"],
+                summary_content=ai_result["summary_content"],
+                source_type="WeChat",
+                account_name=ai_result["account"]
+            )
+            await tracker.step(4, "知识库双轨归档完成", "OK", f"`{archive_info['summary_path'].name}`")
+
+            final_response = (
+                f"🎉 *微信文章 100% 原文沉淀与深度分析完成！*\n\n"
+                f"📌 **标题**: 《{ai_result['title']}》\n"
+                f"📢 **公众号**: `{ai_result['account']}`\n"
+                f"📁 **归档目录**: `Auto_Clippings/`\n"
+                f"📄 **原文归档**: `{archive_info['raw_path'].name}`\n"
+                f"🧠 **智能简报**: `{archive_info['summary_path'].name}`\n\n"
+                f"📋 **完整执行工作流**:\n"
+                f"{tracker.get_summary_trace()}\n\n"
+                f"---\n\n"
+                f"{ai_result['summary_content']}"
+            )
+            await send_or_edit_long_message(msg, final_response)
+        except Exception as e:
+            logger.error(f"微信文章处理失败: {e}")
+            await tracker.step(2, "微信文章抓取失败", "ERROR", f"`{str(e)[:60]}`")
+            await msg.edit_text(f"❌ 微信文章处理失败:\n{tracker.get_summary_trace()}")
+
+    # 3. 普通网页链接
     elif "http://" in text or "https://" in text:
         msg = await update.message.reply_text("📰 收到网页链接，正在初始化流水线...")
         tracker = TaskTracker(msg, base_title="SecondBrain-Flow 网页深度提炼")
@@ -325,7 +373,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await tracker.step(2, "网页解析失败", "ERROR", f"`{str(e)[:60]}`")
             await msg.edit_text(f"❌ 网页解析失败:\n{tracker.get_summary_trace()}")
 
-    # 3. 普通纯文本
+    # 4. 普通纯文本
     else:
         note_path = await save_to_obsidian_inbox(
             title="纯文本闪念笔记",
@@ -466,6 +514,162 @@ def main():
             logger.error(f"聊天失败: {e}")
             await status_message.edit_text(f"抱歉，遇到了一点问题: {e}")
 
+    # 📚 新增 /quiz 动态无限研习题库与原著深度题解 (Turso RAG + DeepSeek-V4-Pro)
+    async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not check_permission(update):
+            return
+            
+        from books_pipeline.dynamic_quiz import get_available_books, generate_dynamic_quiz
+        
+        args = context.args or []
+        if not args:
+            # 1. 未带参数时，展现馆藏书库供用户点击选择
+            try:
+                books = await get_available_books()
+                if not books:
+                    await update.message.reply_text("📚 当前智能图书馆暂无入库书籍，请先将书籍放入 `downloads/CloseReading/` 并运行索引器入库。")
+                    return
+                    
+                keyboard = []
+                for b in books:
+                    icon = "🐍" if "python" in b["id"].lower() else "⚙️"
+                    keyboard.append([InlineKeyboardButton(
+                        f"{icon} 《{b['title'][:20]}...》({b['total_chunks']} 块)",
+                        callback_data=f"quiz_book:{b['id']}"
+                    )])
+                keyboard.append([InlineKeyboardButton("🎲 随机盲盒全馆抽题", callback_data="quiz_book:random")])
+                
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(
+                    "📚 *第二大脑·AI 智能图书馆测试题系统*\n\n"
+                    "由 **Turso 向量库 + DeepSeek-V4-Pro** 实时动态命制与精准溯源。\n"
+                    "请选择你想研习的书籍，或直接使用 `/quiz <主题>` 进行定向出题：\n"
+                    "例如：`/quiz 线程池` 或 `/quiz 协程`",
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                logger.error(f"加载书库列表失败: {e}")
+                await update.message.reply_text(f"❌ 加载书库失败: {e}")
+            return
+
+        # 2. 用户指定了主题，进行专题定向出题
+        topic = " ".join(args)
+        status_msg = await update.message.reply_text(f"🔍 正在从向量库检索关于 *「{topic}」* 的切块并由 DeepSeek 命题中...", parse_mode="Markdown")
+        try:
+            books = await get_available_books()
+            target_book = books[0]["id"] if books else "the_python_3_standard_library_by_example__developer_s_library"
+            for b in books:
+                if any(kw in topic.lower() for kw in ["haskell", "函数式", "monad"]):
+                    if "haskell" in b["id"].lower():
+                        target_book = b["id"]
+                        break
+                elif "python" in b["id"].lower():
+                    target_book = b["id"]
+                    
+            quiz = await generate_dynamic_quiz(target_book, topic=topic)
+            
+            # 构建选项展示与按钮
+            options_text = ""
+            btn_row = []
+            for opt_key, opt_val in quiz["options"].items():
+                options_text += f"\n*{opt_key}.* {opt_val}\n"
+                btn_row.append(InlineKeyboardButton(f" {opt_key} ", callback_data=f"quiz_ans:{quiz['quiz_id']}:{opt_key}"))
+                
+            q_text = (
+                f"📚 *《{quiz.get('book_id', '智能图书馆')}》· 动态研习题*\n"
+                f"📌 **出处章节**：《{quiz.get('chapter_title', '核心章节')}》\n\n"
+                f"❓ *题目*：\n{quiz['question']}\n\n"
+                f"📋 *选项*：{options_text}"
+            )
+            reply_markup = InlineKeyboardMarkup([btn_row])
+            await status_msg.edit_text(q_text, reply_markup=reply_markup, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"动态出题失败: {e}")
+            await status_msg.edit_text(f"❌ 动态出题失败: {e}")
+
+    # 🔘 交互答题与选书回调处理器
+    async def quiz_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+        
+        from books_pipeline.dynamic_quiz import get_available_books, generate_dynamic_quiz, evaluate_and_explain
+        
+        data = query.data
+        if data.startswith("quiz_book:"):
+            book_id = data.replace("quiz_book:", "")
+            await query.edit_message_text("🎲 正在从知识库抽取切块，DeepSeek-V4-Pro 现场命制原创测试题中...")
+            try:
+                if book_id == "random":
+                    books = await get_available_books()
+                    import random
+                    target_book = random.choice(books)["id"] if books else "the_python_3_standard_library_by_example__developer_s_library"
+                else:
+                    target_book = book_id
+                    
+                quiz = await generate_dynamic_quiz(target_book)
+                options_text = ""
+                btn_row = []
+                for opt_key, opt_val in quiz["options"].items():
+                    options_text += f"\n*{opt_key}.* {opt_val}\n"
+                    btn_row.append(InlineKeyboardButton(f" {opt_key} ", callback_data=f"quiz_ans:{quiz['quiz_id']}:{opt_key}"))
+                    
+                q_text = (
+                    f"📚 *《{quiz.get('book_id', '智能图书馆')}》· 动态研习题*\n"
+                    f"📌 **出处章节**：《{quiz.get('chapter_title', '核心章节')}》\n\n"
+                    f"❓ *题目*：\n{quiz['question']}\n\n"
+                    f"📋 *选项*：{options_text}"
+                )
+                reply_markup = InlineKeyboardMarkup([btn_row])
+                await query.edit_message_text(q_text, reply_markup=reply_markup, parse_mode="Markdown")
+            except Exception as e:
+                logger.error(f"出题失败: {e}")
+                await query.edit_message_text(f"❌ 出题失败: {e}")
+                
+        elif data.startswith("quiz_ans:"):
+            parts = data.split(":")
+            quiz_id = parts[1]
+            user_opt = parts[2]
+            
+            await query.edit_message_text(f"📝 你的选择是 *{user_opt}*，DeepSeek-V4-Pro 正在调取原著段落动态生成专属复盘与解析...", parse_mode="Markdown")
+            try:
+                user_id = str(update.effective_user.id) if update.effective_user else "woodman"
+                eval_res = await evaluate_and_explain(quiz_id, user_opt, user_id=user_id)
+                
+                # 获取原题记录查看所属书籍
+                from books_pipeline.db import execute_turso
+                rows = await execute_turso("SELECT book_id FROM library_quiz_history WHERE id = ?;", [quiz_id])
+                current_book_id = rows[0]["book_id"] if rows else "random"
+                
+                keyboard = [
+                    [InlineKeyboardButton("🎲 下一道题 (当前书)", callback_data=f"quiz_book:{current_book_id}")],
+                    [InlineKeyboardButton("📚 换一本书 / 全馆盲盒", callback_data="quiz_book:random")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                ans_text = eval_res["analysis"]
+                await query.edit_message_text(ans_text, reply_markup=reply_markup, parse_mode="Markdown")
+            except Exception as e:
+                logger.error(f"评析失败: {e}")
+                await query.edit_message_text(f"❌ 题解生成失败: {e}")
+
+    # 📚 新增 /weread 微信读书指南与状态指令
+    async def weread_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not check_permission(update):
+            return
+        text = (
+            "📚 *微信读书（WeRead）智能同步中心*\n\n"
+            "微信读书的划线与想法将自动归档至 Obsidian 的 `Auto_Clippings/` 目录，并由 AI 自动生成全书精读报告。\n\n"
+            "💡 **极速接入方式（推荐）**：\n"
+            "1. **在 Obsidian 中安装插件**：在您的 Mac / 手机 Obsidian 插件市场搜索并安装 `Weread Plugin`；\n"
+            "2. **设置存储目录**：在插件设置中将“保存路径”设置为 `Auto_Clippings`；\n"
+            "3. **微信扫码登录**：点击插件中的“扫码登录”，用手机微信扫一扫；\n"
+            "4. **一键同步**：点击同步后，所有书籍、划线、书评即刻生成 Markdown 笔记，N100 会在 1 分钟内自动将其发布至 `brain.imdld.com`！\n\n"
+            "🍵 **日常微信文章剪藏**：\n"
+            "直接把微信公众号文章的链接发给我，我会在 3 秒内抓取 100% 完整正文，生成 DeepSeek-V4 深度简报并存入 `Auto_Clippings`！"
+        )
+        await update.message.reply_text(text, parse_mode="Markdown")
+
     async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         """全局 Telegram 异常处理，避免刷屏日志"""
         logger.warning(f"Telegram 网络或调度异常已捕获: {context.error}")
@@ -473,11 +677,14 @@ def main():
     app.add_error_handler(error_handler)
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("status", status_command))
+    app.add_handler(CommandHandler("weread", weread_command))
     app.add_handler(CommandHandler("quota", quota_command))
     app.add_handler(CommandHandler("tokens", quota_command))
     app.add_handler(CommandHandler("clean", clean_command))
     app.add_handler(CommandHandler("ask", ask_command))
     app.add_handler(CommandHandler("chat", chat_command))
+    app.add_handler(CommandHandler("quiz", quiz_command))
+    app.add_handler(CallbackQueryHandler(quiz_callback_handler, pattern=r"^quiz_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     if app.job_queue:

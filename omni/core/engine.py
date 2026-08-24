@@ -326,16 +326,27 @@ def create_engine(base_dir: str | None = None) -> OmniEngine:
     Args:
         base_dir: 数据文件所在目录，默认为当前工作目录。
     """
-    if base_dir is None:
-        base_dir = str(Path(__file__).parent.parent)
+    # 智能寻找最新的 stock.csv 数据底座
+    csv_candidates = [
+        os.path.join(base_dir, "data", "stock.csv"),
+        os.path.join(base_dir, "stock.csv"),
+        os.path.join(base_dir, "data", "Stock.csv"),
+        os.path.join(base_dir, "Stock.csv"),
+    ]
+    valid_csv = [p for p in csv_candidates if os.path.exists(p)]
+    if not valid_csv:
+        raise FileNotFoundError(f"致命错误：未在 {base_dir} 找到数据底座 stock.csv")
 
-    csv_path = os.path.join(base_dir, "data", "stock.csv")
-    plan_path = os.path.join(base_dir, "data", "battle_plan.json")
+    csv_path = max(valid_csv, key=os.path.getmtime)
 
-    if not os.path.exists(csv_path):
-        raise FileNotFoundError(f"致命错误：未找到数据底座 {csv_path}")
+    plan_candidates = [
+        os.path.join(base_dir, "data", "battle_plan.json"),
+        os.path.join(base_dir, "battle_plan.json"),
+    ]
+    valid_plan = [p for p in plan_candidates if os.path.exists(p)]
+    plan_path = max(valid_plan, key=os.path.getmtime) if valid_plan else None
 
     return OmniEngine(
         csv_path=csv_path,
-        battle_plan_path=plan_path if os.path.exists(plan_path) else None,
+        battle_plan_path=plan_path,
     )
