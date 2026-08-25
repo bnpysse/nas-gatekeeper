@@ -409,7 +409,80 @@
             </div>
         </section>
 
-        <!-- 模块四：🚰 TokenGate 2.0 每日水库水位与硬锁熔断大屏 -->
+        <!-- 模块四：💰 第二大脑·全景算力总账 (All-Time Unified Tokens Ledger) -->
+        <section class="space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex items-center space-x-2">
+                    <div class="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+                    <h2 class="text-base font-bold text-white tracking-wide">第二大脑·全景算力总账 (All-Time Unified Tokens Ledger)</h2>
+                </div>
+                <div class="flex items-center space-x-2 text-xs text-gray-400 font-mono">
+                    <span class="px-2.5 py-1 rounded-lg bg-gate-800 border border-gate-700/80 text-amber-300 flex items-center gap-1.5">
+                        <i data-lucide="database" class="w-3.5 h-3.5"></i>
+                        <span>全业务线单一真实数据源 (Single Source of Truth)</span>
+                    </span>
+                </div>
+            </div>
+
+            <!-- 4 块核心全景指标概览卡 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="p-4 rounded-xl bg-gate-900/90 border border-gate-700/70 shadow-lg space-y-1">
+                    <span class="text-xs text-gray-400 font-medium">全景消耗总 Tokens</span>
+                    <p class="text-2xl font-bold font-mono text-cyan-300">{{ "{:,}".format(grand_ledger.grand_total_tokens) }}</p>
+                    <span class="text-[10px] text-gray-400 font-mono">全库专著与交互推理</span>
+                </div>
+                <div class="p-4 rounded-xl bg-gate-900/90 border border-gate-700/70 shadow-lg space-y-1">
+                    <span class="text-xs text-gray-400 font-medium">模型调用总频次</span>
+                    <p class="text-2xl font-bold font-mono text-indigo-300">{{ "{:,}".format(grand_ledger.total_calls) }} <span class="text-xs">次</span></p>
+                    <span class="text-[10px] text-gray-400 font-mono">深度去水、切块与考题命制</span>
+                </div>
+                <div class="p-4 rounded-xl bg-gate-900/90 border border-gate-700/70 shadow-lg space-y-1">
+                    <span class="text-xs text-gray-400 font-medium">输入 / 输出 Tokens 对比</span>
+                    <p class="text-xs font-mono text-emerald-400 mt-1">入: {{ "{:,}".format(grand_ledger.total_prompt_tokens) }}</p>
+                    <p class="text-xs font-mono text-sky-400">出: {{ "{:,}".format(grand_ledger.total_completion_tokens) }}</p>
+                    <span class="text-[10px] text-gray-400 font-mono">Prompt vs Completion</span>
+                </div>
+                <div class="p-4 rounded-xl bg-gate-900/90 border border-gate-700/70 shadow-lg space-y-1">
+                    <span class="text-xs text-gray-400 font-medium">累计模型推理耗时</span>
+                    <p class="text-2xl font-bold font-mono text-amber-300">{{ "{:,}".format(grand_ledger.total_duration_seconds|int) }} <span class="text-xs">s</span></p>
+                    <span class="text-[10px] text-gray-400 font-mono">~{{ grand_ledger.total_hours }} 小时高强度运算</span>
+                </div>
+            </div>
+
+            <!-- 各大模型全景消耗贡献条 -->
+            <div class="space-y-3">
+                {% for row in grand_ledger.breakdown %}
+                <div class="p-4 rounded-xl bg-gate-900/80 border border-gate-700/60 shadow-md space-y-2.5">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-[11px] px-2.5 py-0.5 rounded-full border font-mono font-semibold {% if row.provider == 'VolcEngine' %}bg-rose-950/80 text-rose-300 border-rose-800/40{% elif row.provider == 'SiliconFlow' %}bg-cyan-950/80 text-cyan-300 border-cyan-800/40{% elif row.provider == 'DashScope' %}bg-amber-950/80 text-amber-300 border-amber-800/40{% elif row.provider == 'ModelScope' %}bg-purple-950/80 text-purple-300 border-purple-800/40{% else %}bg-slate-800 text-slate-300 border-slate-700{% endif %}">
+                                {{ row.provider }}
+                            </span>
+                            <span class="font-bold text-gray-100 text-sm font-mono">{{ row.model_name }}</span>
+                        </div>
+                        <div class="flex items-center space-x-3 text-xs font-mono text-gray-400">
+                            <span>调用: <strong class="text-gray-200">{{ "{:,}".format(row.call_count) }}</strong> 次</span>
+                            <span>耗时: <strong class="text-gray-200">{{ row.total_duration }}s</strong></span>
+                            <span class="font-bold text-cyan-300 text-sm">{{ "{:,}".format(row.grand_total_tokens) }} Tokens</span>
+                        </div>
+                    </div>
+
+                    <!-- 进度条 -->
+                    {% set pct = (row.grand_total_tokens / grand_ledger.grand_total_tokens * 100)|round(1) if grand_ledger.grand_total_tokens > 0 else 0 %}
+                    <div class="w-full bg-gate-800/80 rounded-full h-2 overflow-hidden">
+                        <div class="bg-gradient-to-r {% if row.provider == 'VolcEngine' %}from-rose-500 to-pink-500{% elif row.provider == 'SiliconFlow' %}from-cyan-500 to-teal-500{% elif row.provider == 'DashScope' %}from-amber-500 to-orange-500{% elif row.provider == 'ModelScope' %}from-purple-500 to-indigo-500{% else %}from-indigo-500 to-cyan-500{% endif %} h-2 rounded-full" style="width: {{ pct }}%"></div>
+                    </div>
+
+                    <div class="flex justify-between text-[11px] text-gray-400 font-mono">
+                        <span>输入 Prompt: {{ "{:,}".format(row.total_prompt_tokens) }} | 输出 Completion: {{ "{:,}".format(row.total_completion_tokens) }}</span>
+                        <span class="font-semibold text-gray-300">全景贡献占比: {{ pct }}%</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- 模块五：🚰 TokenGate 2.0 每日水库水位与硬锁熔断大屏 -->
         <section class="space-y-4">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div class="flex items-center space-x-2">

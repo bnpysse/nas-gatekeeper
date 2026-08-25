@@ -1,0 +1,27 @@
+{
+  "crawler": {
+    "last_ping": "2026-08-25T12:56:22.651757",
+    "status": "ok",
+    "articles_today": 75,
+    "daily_summary": "Daily_Summary_20260821.md",
+    "message": "系统初始化完成",
+    "recent_items": [
+      {
+        "title": "Ranked: Countries With the Highest Senior Poverty Rates",
+        "source": "Visual Capitalist"
+      },
+      {
+        "title": "smolmachines / smolvm as a sandbox for untrusted Python & JS",
+        "source": "Simon Willison"
+      },
+      {
+        "title": "A shot-scraper-style JSON API on Bun 1.4's new Bun.WebView",
+        "source": "Simon Willison"
+      },
+      {
+        "title": "Japan tried to build an operating system for the world",
+        "source": "Hacker News Top"
+      }
+    ]
+  }
+}

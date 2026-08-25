@@ -46,6 +46,10 @@ class Settings:
     DEEPSEEK_API_KEY: str = os.environ.get("DEEPSEEK_API_KEY", "")
     SILICONFLOW_API_KEY: str = os.environ.get("SILICONFLOW_API_KEY", "")
 
+    # Turso 数据库
+    TURSO_DATABASE_URL: str = os.environ.get("TURSO_DATABASE_URL", "")
+    TURSO_AUTH_TOKEN: str = os.environ.get("TURSO_AUTH_TOKEN", "")
+
     # 代理
     HTTP_PROXY: str = os.environ.get("HTTP_PROXY", "")
     HTTPS_PROXY: str = os.environ.get("HTTPS_PROXY", "")

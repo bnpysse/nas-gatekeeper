@@ -8,8 +8,15 @@ from fastapi import APIRouter, Query
 from ...core.models import QuotaSummary, ModelItem
 from ...core.detector import detector
 from ...core.budget_guard import budget_guard
+from ...core.ledger import token_ledger
 
 router = APIRouter(prefix="/api", tags=["Quotas"])
+
+@router.get("/usage/summary")
+@router.get("/ledger")
+async def get_unified_ledger():
+    """获取 TokenGate 2.0 统一全景算力总账 (包含全库历史总账 + 今日每日水库)"""
+    return await token_ledger.get_unified_summary()
 
 @router.get("/budget/watermark")
 @router.get("/watermark")

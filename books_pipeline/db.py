@@ -85,7 +85,8 @@ async def execute_turso(sql: str, args: list = None) -> List[Dict[str, Any]]:
         logger.error("❌ Turso 配置缺失 (TURSO_DATABASE_URL / TURSO_AUTH_TOKEN)")
         return []
 
-    url = f"{TURSO_URL}/v2/pipeline"
+    clean_url = TURSO_URL.replace("libsql://", "https://").rstrip("/")
+    url = f"{clean_url}/v2/pipeline"
     headers = {
         "Authorization": f"Bearer {TURSO_TOKEN}",
         "Content-Type": "application/json"

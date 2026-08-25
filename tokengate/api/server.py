@@ -16,6 +16,7 @@ from ..core.config import settings
 from ..core.detector import detector
 from ..core.probe import probe_engine
 from ..core.budget_guard import budget_guard
+from ..core.ledger import token_ledger
 from .routes.quotas import router as quotas_router
 from .routes.recommend import router as recommend_router
 from .routes.proxy import router as proxy_router
@@ -79,8 +80,9 @@ async def render_dashboard(request: Request):
     import asyncio
     summary_task = detector.detect_all()
     probe_task = probe_engine.probe_all()
+    ledger_task = token_ledger.get_grand_ledger()
     
-    summary_raw, probe = await asyncio.gather(summary_task, probe_task, return_exceptions=True)
+    summary_raw, probe, grand_ledger = await asyncio.gather(summary_task, probe_task, ledger_task, return_exceptions=True)
     
     flattened_models = []
     summary_info = {
@@ -118,45 +120,43 @@ async def render_dashboard(request: Request):
                     expire_display = expire_date if expire_date else "按量计费"
                 elif pid == "siliconflow":
                     quota_type = "0元专区"
-                    remaining_display = used_quota if used_quota else "0元专区畅享"
-                    expire_display = expire_date if expire_date else "官方0元免费池"
-                elif pid == "modelscope":
-                    quota_type = "每日循环"
-                    remaining_display = "2,000 次 / 天 (免费配额)"
-                    expire_display = "每日 0 点重置 2,000 次"
-                elif pid == "gemini":
-                    quota_type = "每日循环"
-                    remaining_display = "1,500 次 / 天 (15 RPM)"
-                    expire_display = "每日 0 点重置 1,500 次"
+                    remaining_display = f"无限量 ({total_quota})"
+                    expire_display = "永久可用"
                 elif pid == "volcengine":
-                    quota_type = "每日循环"
-                    remaining_display = used_quota if used_quota else "200万 Tokens / 天 (剩 95.4%)"
-                    expire_display = "每日 0 点重置 2,000,000 Token"
+                    quota_type = "1:1返还"
+                    remaining_display = f"余 {rem_percent}% ({used_quota})"
+                    expire_display = expire_date if expire_date else "每日循环"
                 elif pid == "dashscope":
-                    quota_type = "0元限免"
-                    if days_left is not None:
-                        expire_display = f"{days_left}天后到期 ({expire_date})"
-                        remaining_display = f"剩 {rem_percent}% ({rem_percent}万 / 100万 Token)"
-                    else:
-                        expire_display = "长期有效"
-                        remaining_display = f"剩余 {rem_percent}%"
+                    quota_type = "体验包"
+                    remaining_display = f"余 {rem_percent}% ({used_quota})"
+                    expire_display = f"{days_left}天后到期" if days_left is not None else expire_date
+                elif pid == "modelscope":
+                    quota_type = "免费推理"
+                    remaining_display = f"余 {rem_percent}% ({used_quota})"
+                    expire_display = "每日2000次"
+                elif pid == "gemini":
+                    quota_type = "免费层"
+                    remaining_display = "每日1500次"
+                    expire_display = "循环补给"
                 else:
-                    quota_type = "免费调用"
-                    remaining_display = f"{rem_percent}%"
-                    expire_display = expire_date or "长期有效"
+                    quota_type = "私有免费"
+                    remaining_display = total_quota if total_quota else "100%"
+                    expire_display = "无限可用"
 
                 flattened_models.append({
-                    "model_id": getattr(m, "id", ""),
-                    "model_name": getattr(m, "name", ""),
+                    "id": getattr(m, "id", ""),
+                    "name": getattr(m, "name", ""),
                     "provider_id": pid,
                     "provider_name": p_name,
-                    "context_window": getattr(m, "context_window", "32K"),
-                    "is_free": getattr(m, "is_free", True),
+                    "active": p_active,
                     "category": getattr(m, "category", "chat"),
+                    "context_window": getattr(m, "context_window", "32K"),
+                    "tier_desc": getattr(m, "tier_desc", ""),
                     "quota_type": quota_type,
                     "remaining_percent": rem_percent,
+                    "remaining_ratio": rem_ratio,
                     "remaining_display": remaining_display,
-                    "is_expiring_soon": is_expiring,
+                    "is_expiring": is_expiring,
                     "expire_display": expire_display,
                     "days_left": days_left,
                     "latency_ms": getattr(m, "latency_ms", 0)
@@ -164,16 +164,29 @@ async def render_dashboard(request: Request):
     if isinstance(probe, Exception) or not probe:
         probe = {"nodes": {}, "services": [], "heartbeat": {}}
 
+    if isinstance(grand_ledger, Exception) or not grand_ledger:
+        grand_ledger = {
+            "breakdown": [],
+            "grand_total_tokens": 0,
+            "total_calls": 0,
+            "total_prompt_tokens": 0,
+            "total_completion_tokens": 0,
+            "total_duration_seconds": 0.0,
+            "total_hours": 0.0
+        }
+
     watermark_data = budget_guard.get_watermark_status()
 
     return templates.TemplateResponse(
         request=request,
         name="index.html",
         context={
+            "request": request,
             "summary": summary_info,
             "models": flattened_models,
             "probe": probe,
             "watermark": watermark_data,
+            "grand_ledger": grand_ledger,
             "version": "2.0.0"
         }
     )
