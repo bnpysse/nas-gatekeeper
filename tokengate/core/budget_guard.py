@@ -27,15 +27,13 @@ class BudgetGuard:
 
     # 各模型每日绝对硬顶限制 (Tokens / 天)
     MODEL_HARD_LIMITS = {
-        # 火山方舟 1:1 满额返还旗舰 (上限 200 万，硬锁阈值 180 万 90%)
-        "volcengine/deepseek-v4-pro": 1_800_000,
-        "volcengine/glm-5.2": 1_800_000,
-        "volcengine/deepseek-v4-flash": 1_800_000,
-        "ep-20260820195716-snkzx": 1_800_000, # DeepSeek-V4-Pro Endpoint
-        "ep-20260814105356-zvsw5": 1_800_000, # GLM-5.2 Endpoint
-        "ep-20260809122445-td2g2": 1_800_000, # DeepSeek-V4-Flash Endpoint
-
-        # 豆包自进化：0.2 极低回馈系数，彻底硬锁拉黑 (限额 0，绝对禁止调用)
+        # 火山方舟全量安全硬锁 (限额 0，绝对禁止调用，杜绝任何欠费风险)
+        "volcengine/deepseek-v4-pro": 0,
+        "volcengine/glm-5.2": 0,
+        "volcengine/deepseek-v4-flash": 0,
+        "ep-20260820195716-snkzx": 0, # DeepSeek-V4-Pro Endpoint
+        "ep-20260814105356-zvsw5": 0, # GLM-5.2 Endpoint
+        "ep-20260809122445-td2g2": 0, # DeepSeek-V4-Flash Endpoint
         "volcengine/doubao-evolving": 0,
         "ep-20260814105629-t99mw": 0,
 
@@ -109,6 +107,17 @@ class BudgetGuard:
     def normalize_model_key(self, raw_model: str) -> str:
         """规范化模型标识"""
         cleaned = raw_model.strip().lower()
+        
+        # 显式前缀优先，防止魔搭模型误判为火山方舟
+        if cleaned.startswith("modelscope/"):
+            return raw_model
+        if cleaned.startswith("siliconflow/"):
+            return raw_model
+        if cleaned.startswith("dashscope/"):
+            return raw_model
+        if cleaned.startswith("volcengine/"):
+            return raw_model
+            
         if cleaned in self.MODEL_ALIAS_MAP:
             return self.MODEL_ALIAS_MAP[cleaned]
         for alias, target in self.MODEL_ALIAS_MAP.items():

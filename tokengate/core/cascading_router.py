@@ -24,36 +24,32 @@ logger = logging.getLogger(__name__)
 class CascadingRouter:
     """动态级联智能路由调度器"""
 
-    # 针对不同任务类型的最优梯队序列 (Primary -> Secondary -> Unlimited Fallback)
+    # 针对不同任务类型的最优梯队序列 (100% 绝对 0 元免费梯队)
     TASK_CASCADES = {
-        # 1. 深度推理 / 架构推演 / 代码解构 / 考题命制 (火山 1:1 返还优先 -> 魔搭 2350亿接力 -> 保底)
+        # 1. 深度推理 / 架构推演 / 代码解构 / 考题命制 (魔搭 2350亿 MoE / DS-V4-Pro 旗舰优先)
         "reasoning": [
-            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_DEEPSEEK_PRO, "alias": "deepseek-v4-pro"},
             {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Pro", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Pro"},
             {"provider": "modelscope", "model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "alias": "modelscope/Qwen/Qwen3-235B-A22B"},
             {"provider": "dashscope", "model": "qwen3.7-plus", "alias": "dashscope/qwen3.7-plus"},
             {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
         ],
-        # 2. 章节级 20% 极客干货去水提炼 / 讲义重构 (火山 GLM-5.2 / Flash 优先 -> 魔搭 235B -> 阿里百炼 -> 保底)
+        # 2. 章节级 20% 极客干货去水提炼 / 讲义重构 (魔搭 235B MoE 思考大模型主力)
         "distill": [
-            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_GLM, "alias": "glm-5.2"},
-            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_DEEPSEEK_FLASH, "alias": "deepseek-v4-flash"},
             {"provider": "modelscope", "model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "alias": "modelscope/Qwen/Qwen3-235B-A22B"},
+            {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Pro", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Pro"},
             {"provider": "dashscope", "model": "qwen3.7-plus", "alias": "dashscope/qwen3.7-plus"},
             {"provider": "modelscope", "model": "MiniMax/MiniMax-M1-80k", "alias": "modelscope/MiniMax/MiniMax-M1-80k"},
             {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
         ],
-        # 3. 快速清洗 / 提取摘要 / 前置粗加工
+        # 3. 快速清洗 / 提取摘要 / 前置粗加工 (魔搭 V4 Flash 0731 毫秒级优先)
         "fast_clean": [
-            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_DEEPSEEK_FLASH, "alias": "deepseek-v4-flash"},
             {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Flash-0731", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Flash-0731"},
             {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
         ],
         # 4. 通用对话 / 问答 / 伴读答疑
         "general": [
-            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_DEEPSEEK_PRO, "alias": "deepseek-v4-pro"},
-            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_GLM, "alias": "glm-5.2"},
             {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Pro", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Pro"},
+            {"provider": "modelscope", "model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "alias": "modelscope/Qwen/Qwen3-235B-A22B"},
             {"provider": "dashscope", "model": "qwen3.7-plus", "alias": "dashscope/qwen3.7-plus"},
             {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
         ],
