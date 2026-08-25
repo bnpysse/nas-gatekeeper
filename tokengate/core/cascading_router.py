@@ -254,9 +254,15 @@ class CascadingRouter:
                 continue
 
             try:
-                if provider == "volcengine":
-                    url = f"{getattr(settings, 'VOLCENGINE_BASE_URL', 'https://ark.cn-beijing.volces.com/api/v3')}/chat/completions"
-                    headers = {"Authorization": f"Bearer {settings.VOLCENGINE_API_KEY}", "Content-Type": "application/json"}
+                if provider == "dashscope":
+                    url = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+                    headers = {"Authorization": f"Bearer {settings.DASHSCOPE_API_KEY}", "Content-Type": "application/json"}
+                elif provider == "modelscope":
+                    url = "https://api-inference.modelscope.cn/v1/chat/completions"
+                    headers = {"Authorization": f"Bearer {settings.MODELSCOPE_API_KEY}", "Content-Type": "application/json"}
+                elif provider == "siliconflow":
+                    url = "https://api.siliconflow.cn/v1/chat/completions"
+                    headers = {"Authorization": f"Bearer {settings.SILICONFLOW_API_KEY}", "Content-Type": "application/json"}
                 else:
                     url = "https://api.siliconflow.cn/v1/chat/completions"
                     headers = {"Authorization": f"Bearer {settings.SILICONFLOW_API_KEY}", "Content-Type": "application/json"}

@@ -41,8 +41,12 @@ async def call_siliconflow_llm(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
+    valid_sf_model = model
+    if "modelscope" in model or "volcengine" in model or "dashscope" in model or "ep-" in model or "qwen" in model.lower():
+        valid_sf_model = "deepseek-ai/DeepSeek-V3"
+
     payload = {
-        "model": model,
+        "model": valid_sf_model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens
