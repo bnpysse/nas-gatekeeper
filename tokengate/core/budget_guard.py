@@ -25,15 +25,18 @@ DB_PATH = DATA_DIR / "daily_budget.db"
 class BudgetGuard:
     """日预算与安全水库门神"""
 
-    # 各模型每日绝对硬顶限制 (Tokens / 天)
+    # 各模型每日绝对硬顶限制 (Tokens / 天) - 基于火山 10:08 发放与递减水库动态计算
     MODEL_HARD_LIMITS = {
-        # 火山方舟全量安全硬锁 (限额 0，绝对禁止调用，杜绝任何欠费风险)
-        "volcengine/deepseek-v4-pro": 0,
-        "volcengine/glm-5.2": 0,
-        "volcengine/deepseek-v4-flash": 0,
-        "ep-20260820195716-snkzx": 0, # DeepSeek-V4-Pro Endpoint
-        "ep-20260814105356-zvsw5": 0, # GLM-5.2 Endpoint
-        "ep-20260809122445-td2g2": 0, # DeepSeek-V4-Flash Endpoint
+        # 火山方舟递减型水库 (保留 40%~50% 蓄水池缓冲，防止穿透)
+        "volcengine/glm-5.2": 1_500_000,          # 现存 265.7 万水库，每日释放 150 万，次日 1:1 补发
+        "volcengine/deepseek-v4-flash": 1_200_000,# 现存 248.3 万水库，每日释放 120 万，次日 1:1 补发
+        "volcengine/deepseek-v4-pro": 600_000,    # 现存 24.9 万 + 今日 10:08 到账 98.7 万，每日释放 60 万
+        
+        "ep-20260814105356-zvsw5": 1_500_000,     # GLM-5.2 Endpoint
+        "ep-20260809122445-td2g2": 1_200_000,     # DeepSeek-V4-Flash Endpoint
+        "ep-20260820195716-snkzx": 600_000,       # DeepSeek-V4-Pro Endpoint
+
+        # 豆包自进化：0.2 极低回馈系数，彻底硬锁拉黑 (限额 0，绝对禁止调用)
         "volcengine/doubao-evolving": 0,
         "ep-20260814105629-t99mw": 0,
 
@@ -101,8 +104,17 @@ class BudgetGuard:
             conn.commit()
 
     def _get_today_str(self) -> str:
-        """获取当前本地自然日字符串 YYYY-MM-DD"""
-        return datetime.datetime.now().strftime("%Y-%m-%d")
+        """
+        获取当前预算周期的日期字符串 (对齐火山方舟 10:08 AM 结算与新包到账时间点)
+        - 10:08 之前：归入前一周期（避免新包未到账提前清零导致超支）
+        - 10:08 之后：正式开启今日新周期
+        """
+        now = datetime.datetime.now()
+        if now.hour < 10 or (now.hour == 10 and now.minute < 8):
+            cycle_date = now.date() - datetime.timedelta(days=1)
+        else:
+            cycle_date = now.date()
+        return cycle_date.strftime("%Y-%m-%d")
 
     def normalize_model_key(self, raw_model: str) -> str:
         """规范化模型标识"""

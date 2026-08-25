@@ -24,28 +24,31 @@ logger = logging.getLogger(__name__)
 class CascadingRouter:
     """动态级联智能路由调度器"""
 
-    # 针对不同任务类型的最优梯队序列 (100% 绝对 0 元免费梯队 · 临期抢跑与高智力优先)
+    # 针对不同任务类型的最优梯队序列 (100% 绝对 0 元免费梯队 · 临期抢跑 ➔ 递减水库 ➔ 魔搭旗舰 ➔ 无限保底)
     TASK_CASCADES = {
-        # 1. 深度推理 / 架构推演 / 代码解构 / 考题命制 (千问 Max 临期抢跑 ➔ 魔搭 V4-Pro ➔ Kimi K3 ➔ 2350亿)
+        # 1. 深度推理 / 架构推演 / 代码解构 / 考题命制 (千问 Max 临期抢跑 ➔ 魔搭 V4-Pro ➔ Kimi K3 ➔ 2350亿 ➔ 火山 V4-Pro ➔ 保底)
         "reasoning": [
             {"provider": "dashscope", "model": "qwen3.7-max-2026-06-08", "alias": "dashscope/qwen3.7-max"},
             {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Pro", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Pro"},
             {"provider": "dashscope", "model": "kimi-k3", "alias": "dashscope/kimi-k3"},
             {"provider": "modelscope", "model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "alias": "modelscope/Qwen/Qwen3-235B-A22B"},
+            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_DEEPSEEK_PRO, "alias": "deepseek-v4-pro"},
             {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
         ],
-        # 2. 章节级 20% 极客干货去水提炼 / 讲义重构 (千问 Plus 临期抢跑 ➔ 魔搭 235B ➔ 千问 3.8 ➔ 保底)
+        # 2. 章节级 20% 极客干货去水提炼 / 讲义重构 (千问 Plus 临期抢跑 ➔ 火山 GLM-5.2 递减水库 ➔ 魔搭 235B ➔ 千问 3.8 ➔ 保底)
         "distill": [
             {"provider": "dashscope", "model": "qwen3.7-plus", "alias": "dashscope/qwen3.7-plus"},
+            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_GLM, "alias": "glm-5.2"},
             {"provider": "modelscope", "model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "alias": "modelscope/Qwen/Qwen3-235B-A22B"},
             {"provider": "dashscope", "model": "qwen3.8-27b", "alias": "dashscope/qwen3.8-27b"},
             {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Pro", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Pro"},
             {"provider": "modelscope", "model": "MiniMax/MiniMax-M1-80k", "alias": "modelscope/MiniMax/MiniMax-M1-80k"},
             {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
         ],
-        # 3. 快速清洗 / 提取摘要 / 前置粗加工 (千问 3.7 Flash ➔ 魔搭 V4 Flash ➔ 保底)
+        # 3. 快速清洗 / 提取摘要 / 前置粗加工 (千问 3.7 Flash ➔ 火山 Flash 递减水库 ➔ 魔搭 V4 Flash ➔ 保底)
         "fast_clean": [
             {"provider": "dashscope", "model": "qwen3.7-flash-2026-07-15", "alias": "dashscope/qwen3.7-flash"},
+            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_DEEPSEEK_FLASH, "alias": "deepseek-v4-flash"},
             {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Flash-0731", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Flash-0731"},
             {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
         ],
@@ -53,6 +56,7 @@ class CascadingRouter:
         "general": [
             {"provider": "dashscope", "model": "qwen3.7-max-2026-06-08", "alias": "dashscope/qwen3.7-max"},
             {"provider": "dashscope", "model": "qwen3.7-plus", "alias": "dashscope/qwen3.7-plus"},
+            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_GLM, "alias": "glm-5.2"},
             {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Pro", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Pro"},
             {"provider": "modelscope", "model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "alias": "modelscope/Qwen/Qwen3-235B-A22B"},
             {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
