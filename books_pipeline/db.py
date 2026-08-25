@@ -79,8 +79,11 @@ def _format_args(args: list) -> list:
     return formatted
 
 
-async def execute_turso(sql: str, args: list = None) -> List[Dict[str, Any]]:
-    """执行 Turso HTTP API 查询并返回字典列表"""
+# 进程内热缓存字典
+_BOOKS_CACHE = {"data": [], "timestamp": 0.0}
+
+async def execute_turso(sql: str, args: list = None, retries: int = 3) -> List[Dict[str, Any]]:
+    """执行 Turso HTTP API 查询并返回字典列表，带 3 次指数退避重试"""
     if not TURSO_URL or not TURSO_TOKEN:
         logger.error("❌ Turso 配置缺失 (TURSO_DATABASE_URL / TURSO_AUTH_TOKEN)")
         return []
@@ -103,36 +106,44 @@ async def execute_turso(sql: str, args: list = None) -> List[Dict[str, Any]]:
         ]
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            res = await client.post(url, headers=headers, json=payload)
-            if res.status_code != 200:
-                logger.error(f"Turso HTTP 错误 [{res.status_code}]: {res.text}")
+    for attempt in range(retries):
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.post(url, headers=headers, json=payload)
+                if res.status_code != 200:
+                    logger.error(f"Turso HTTP 错误 [{res.status_code}] (重试 {attempt+1}/{retries}): {res.text}")
+                    if attempt < retries - 1:
+                        await asyncio.sleep(0.5 * (attempt + 1))
+                        continue
+                    return []
+                
+                data = res.json()
+                results = data.get("results", [])
+                if not results:
+                    return []
+                
+                first = results[0]
+                if first.get("type") == "error":
+                    logger.error(f"Turso SQL 错误: {first.get('error', {}).get('message')}")
+                    return []
+                
+                response_data = first.get("response", {}).get("result", {})
+                cols = [c["name"] for c in response_data.get("cols", [])]
+                rows = []
+                for r in response_data.get("rows", []):
+                    row_dict = {}
+                    for idx, col in enumerate(cols):
+                        val_obj = r[idx]
+                        row_dict[col] = val_obj.get("value")
+                    rows.append(row_dict)
+                return rows
+        except Exception as e:
+            logger.error(f"Turso 请求异常 (重试 {attempt+1}/{retries}): {e}")
+            if attempt < retries - 1:
+                await asyncio.sleep(0.5 * (attempt + 1))
+            else:
                 return []
-            
-            data = res.json()
-            results = data.get("results", [])
-            if not results:
-                return []
-            
-            first = results[0]
-            if first.get("type") == "error":
-                logger.error(f"Turso SQL 错误: {first.get('error', {}).get('message')}")
-                return []
-            
-            response_data = first.get("response", {}).get("result", {})
-            cols = [c["name"] for c in response_data.get("cols", [])]
-            rows = []
-            for r in response_data.get("rows", []):
-                row_dict = {}
-                for idx, col in enumerate(cols):
-                    val_obj = r[idx]
-                    row_dict[col] = val_obj.get("value")
-                rows.append(row_dict)
-            return rows
-    except Exception as e:
-        logger.error(f"Turso 请求异常: {e}")
-        return []
+    return []
 
 
 async def record_usage(
@@ -214,6 +225,22 @@ async def get_total_library_usage() -> Dict[str, Any]:
     }
 
 async def get_all_books() -> List[Dict[str, Any]]:
-    """获取图书馆中所有书籍元数据与切块统计"""
+    """获取图书馆中所有书籍元数据与切块统计 (带 30s 内存热缓存与防穿透降级)"""
+    global _BOOKS_CACHE
+    import time
+    now = time.time()
+    if _BOOKS_CACHE["data"] and (now - _BOOKS_CACHE["timestamp"] < 30.0):
+        return _BOOKS_CACHE["data"]
+
     sql = "SELECT * FROM library_books ORDER BY created_at DESC;"
-    return await execute_turso(sql)
+    rows = await execute_turso(sql, retries=3)
+    if rows:
+        _BOOKS_CACHE["data"] = rows
+        _BOOKS_CACHE["timestamp"] = now
+        return rows
+    
+    # 远程 Turso 偶发网络抖动时，降级返回历史热缓存
+    if _BOOKS_CACHE["data"]:
+        logger.warning("⚠️ Turso 查询为空或超时，降级返回历史热缓存书籍列表")
+        return _BOOKS_CACHE["data"]
+    return []
