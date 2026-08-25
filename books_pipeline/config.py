@@ -20,9 +20,9 @@ class LibraryConfig:
     )
     SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1"
     
-    MODEL_DISTILLER = "deepseek-ai/DeepSeek-V3" # 章节级 20% 去水提炼主力 (0元免费)
-    MODEL_REASONER = "deepseek-ai/DeepSeek-V3"  # 3分钟全景透视/Mermaid/题库 (0元免费)
-    MODEL_FLASH = "deepseek-ai/DeepSeek-V3"     # 快速交互清洗 (0元免费)
+    MODEL_DISTILLER = "modelscope/Qwen/Qwen3-235B-A22B-Thinking-2507" # 章节级 20% 去水提炼主力 (2350亿 MoE 推理大模型)
+    MODEL_REASONER = "modelscope/deepseek-ai/DeepSeek-V4-Pro"          # 3分钟全景透视/Mermaid/题库 (V4-Pro 深度思维链)
+    MODEL_FLASH = "modelscope/deepseek-ai/DeepSeek-V4-Flash-0731"     # 快速交互清洗 (毫秒响应)
 
     EMBEDDING_MODEL = "BAAI/bge-m3"
     RERANK_MODEL = "BAAI/bge-reranker-v2-m3"

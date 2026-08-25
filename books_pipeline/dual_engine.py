@@ -139,6 +139,57 @@ async def call_volcengine(
             max_tokens=max_tokens,
             preferred_model=model_endpoint
         )
+        
+        # 写入 Turso 算力台账
+        if book_id:
+            try:
+                raw_resp = res.get("raw_response", {})
+                usage = raw_resp.get("usage", {})
+                p_tok = usage.get("prompt_tokens", 0)
+                c_tok = usage.get("completion_tokens", 0)
+                t_tok = usage.get("total_tokens", p_tok + c_tok)
+                prov = res.get("provider", "SiliconFlow")
+                mod_name = res.get("model_used", "DeepSeek-V3")
+                
+                prov_display_map = {
+                    "modelscope": "ModelScope",
+                    "volcengine": "VolcEngine",
+                    "siliconflow": "SiliconFlow",
+                    "dashscope": "DashScope"
+                }
+                prov_key = prov_display_map.get(prov.lower(), prov)
+                
+                if "Qwen3-235B" in mod_name or "235B" in mod_name:
+                    model_key = "Qwen-3-235B-Thinking"
+                elif "DeepSeek-V4-Pro" in mod_name or "v4-pro" in mod_name:
+                    model_key = "DeepSeek-V4-Pro"
+                elif "DeepSeek-V4-Flash" in mod_name or "v4-flash" in mod_name:
+                    model_key = "DeepSeek-V4-Flash"
+                elif "GLM-5.2" in mod_name or "glm-5.2" in mod_name:
+                    model_key = "GLM-5.2"
+                elif "MiniMax" in mod_name:
+                    model_key = "MiniMax-M1-80k"
+                elif "DeepSeek-V3" in mod_name:
+                    model_key = "DeepSeek-V3"
+                elif "qwen3.7-plus" in mod_name or "qwen-plus" in mod_name:
+                    model_key = "Qwen-3.7-Plus"
+                else:
+                    model_key = mod_name.split("/")[-1]
+                    
+                await record_usage(
+                    book_id=book_id,
+                    task_name=task_name or "LLM_Inference",
+                    provider=prov_key,
+                    model_name=model_key,
+                    prompt_tokens=p_tok,
+                    completion_tokens=c_tok,
+                    total_tokens=t_tok,
+                    duration_seconds=res.get("duration_seconds", 0.0),
+                    cost_cny=0.0
+                )
+            except Exception as err:
+                logger.warning(f"记录 TokenGate 台账异常: {err}")
+
         return res["content"]
 
     # 本地备用直连逻辑

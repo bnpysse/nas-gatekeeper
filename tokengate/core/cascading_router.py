@@ -26,35 +26,35 @@ class CascadingRouter:
 
     # 针对不同任务类型的最优梯队序列 (Primary -> Secondary -> Unlimited Fallback)
     TASK_CASCADES = {
-        # 1. 深度推理 / 架构推演 / 代码解构 / 考题命制 (顶配思维链优先)
+        # 1. 深度推理 / 架构推演 / 代码解构 / 考题命制 (火山 1:1 返还优先 -> 魔搭 2350亿接力 -> 保底)
         "reasoning": [
+            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_DEEPSEEK_PRO, "alias": "deepseek-v4-pro"},
             {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Pro", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Pro"},
             {"provider": "modelscope", "model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "alias": "modelscope/Qwen/Qwen3-235B-A22B"},
             {"provider": "dashscope", "model": "qwen3.7-plus", "alias": "dashscope/qwen3.7-plus"},
-            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_DEEPSEEK_PRO, "alias": "deepseek-v4-pro"},
             {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
         ],
-        # 2. 章节级 20% 极客干货去水提炼 / 讲义重构 (大窗口与高智力优先)
+        # 2. 章节级 20% 极客干货去水提炼 / 讲义重构 (火山 GLM-5.2 / Flash 优先 -> 魔搭 235B -> 阿里百炼 -> 保底)
         "distill": [
-            {"provider": "dashscope", "model": "qwen3.7-plus", "alias": "dashscope/qwen3.7-plus"},
-            {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Pro", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Pro"},
-            {"provider": "modelscope", "model": "MiniMax/MiniMax-M1-80k", "alias": "modelscope/MiniMax/MiniMax-M1-80k"},
-            {"provider": "modelscope", "model": "ZhipuAI/GLM-5.2", "alias": "modelscope/GLM-5.2"},
             {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_GLM, "alias": "glm-5.2"},
+            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_DEEPSEEK_FLASH, "alias": "deepseek-v4-flash"},
+            {"provider": "modelscope", "model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "alias": "modelscope/Qwen/Qwen3-235B-A22B"},
+            {"provider": "dashscope", "model": "qwen3.7-plus", "alias": "dashscope/qwen3.7-plus"},
+            {"provider": "modelscope", "model": "MiniMax/MiniMax-M1-80k", "alias": "modelscope/MiniMax/MiniMax-M1-80k"},
             {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
         ],
         # 3. 快速清洗 / 提取摘要 / 前置粗加工
         "fast_clean": [
-            {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Flash-0731", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Flash-0731"},
             {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_DEEPSEEK_FLASH, "alias": "deepseek-v4-flash"},
+            {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Flash-0731", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Flash-0731"},
             {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
         ],
         # 4. 通用对话 / 问答 / 伴读答疑
         "general": [
+            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_DEEPSEEK_PRO, "alias": "deepseek-v4-pro"},
+            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_GLM, "alias": "glm-5.2"},
             {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Pro", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Pro"},
             {"provider": "dashscope", "model": "qwen3.7-plus", "alias": "dashscope/qwen3.7-plus"},
-            {"provider": "modelscope", "model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "alias": "modelscope/Qwen/Qwen3-235B-A22B"},
-            {"provider": "volcengine", "model": settings.VOLCENGINE_ENDPOINT_DEEPSEEK_PRO, "alias": "deepseek-v4-pro"},
             {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
         ],
     }
