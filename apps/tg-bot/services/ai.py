@@ -187,35 +187,23 @@ async def _summarize_with_glm_stream(text: str, title: str):
     )
 
     est_tokens = estimator.estimate_text_tokens(prompt) + 2500 if estimator else 5000
-    allow_volc = True
-    if budget_guard:
-        allowed, _, _, _, reason = budget_guard.can_allocate("glm-5.2", est_tokens)
-        if not allowed:
-            logger.warning(f"🛡️ [TG-Bot 预算门神] GLM-5.2 {reason} ➔ 自动切换至硅基流动 0元保底池")
-            allow_volc = False
-
-    # 1. 优先在安全水位内调用火山方舟 GLM-5.2
-    if allow_volc:
-        try:
-            client = get_volcengine_async_client()
-            glm_ep = os.getenv("VOLCENGINE_ENDPOINT_GLM", "ep-20260814105356-zvsw5")
-            response = await client.chat.completions.create(
-                model=glm_ep,
-                messages=[{"role": "user", "content": prompt}],
-                stream=True
-            )
-            accumulated = ""
-            async for chunk in response:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    delta = chunk.choices[0].delta.content
-                    accumulated += delta
-                    yield delta
-            if budget_guard and estimator:
-                act = estimator.estimate_text_tokens(accumulated) + est_tokens
-                budget_guard.record_usage("glm-5.2", act, provider="volcengine")
-            return
-        except Exception as volc_err:
-            logger.warning(f"火山方舟 GLM-5.2 异常 ({volc_err})，自动切换至硅基流动 GLM-5.2 备用...")
+    # 1. 优先走 TokenGate 2.0 智能中央网关 (自动级联阿里百炼 / 魔搭 235B / 硅基流动)
+    try:
+        tg_client = get_tokengate_async_client()
+        response = await tg_client.chat.completions.create(
+            model="distill",
+            messages=[{"role": "user", "content": prompt}],
+            stream=True
+        )
+        accumulated = ""
+        async for chunk in response:
+            if chunk.choices and chunk.choices[0].delta.content:
+                delta = chunk.choices[0].delta.content
+                accumulated += delta
+                yield delta
+        return
+    except Exception as tg_err:
+        logger.warning(f"TokenGate 网关调度异常 ({tg_err})，自动切换至阿里百炼 / 硅基流动备用...")
 
     # 2. 备用容灾：硅基流动 SiliconFlow
     try:

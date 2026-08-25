@@ -249,18 +249,46 @@ class CrawlerDoctor:
 - **健康预期**：(说明修复后预期的恢复状态)
 """
 
-        # 优先使用火山方舟 DeepSeek-V4 (国内直连，极速且推理能力顶尖)
-        if VOLCENGINE_API_KEY and VOLCENGINE_ENDPOINT:
+        # 1. 优先走 TokenGate 2.0 智能中央网关 (自动级联阿里百炼 / 魔搭 235B / 硅基流动)
+        tokengate_urls = [
+            "http://127.0.0.1:8800/v1/chat/completions",
+            "https://tg.donglida.com/v1/chat/completions"
+        ]
+        for tg_url in tokengate_urls:
             try:
-                with httpx.Client(timeout=60.0, trust_env=False) as client:
+                with httpx.Client(timeout=30.0, trust_env=False) as client:
                     resp = client.post(
-                        "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+                        tg_url,
+                        headers={"Content-Type": "application/json"},
+                        json={
+                            "model": "auto",
+                            "messages": [
+                                {"role": "system", "content": "你是 N100 第二大脑的高级 AIOps 自治运维专家，诊断精准精炼。"},
+                                {"role": "user", "content": prompt}
+                            ],
+                            "temperature": 0.2,
+                            "max_tokens": 1200
+                        }
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        return data["choices"][0]["message"]["content"].strip()
+            except Exception:
+                continue
+
+        # 2. 直连阿里百炼 DashScope (通义千问 3.7 Plus / Max 官方 0 元池)
+        dashscope_key = os.getenv("DASHSCOPE_API_KEY", "")
+        if dashscope_key:
+            try:
+                with httpx.Client(timeout=30.0, trust_env=False) as client:
+                    resp = client.post(
+                        "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
                         headers={
-                            "Authorization": f"Bearer {VOLCENGINE_API_KEY}",
+                            "Authorization": f"Bearer {dashscope_key}",
                             "Content-Type": "application/json"
                         },
                         json={
-                            "model": VOLCENGINE_ENDPOINT,
+                            "model": "qwen3.7-plus",
                             "messages": [
                                 {"role": "system", "content": "你是 N100 第二大脑的高级 AIOps 自治运维专家，诊断精准精炼。"},
                                 {"role": "user", "content": prompt}
@@ -273,7 +301,34 @@ class CrawlerDoctor:
                         data = resp.json()
                         return data["choices"][0]["message"]["content"].strip()
             except Exception as e:
-                print(f"⚠️ Volcengine DeepSeek 诊断调用失败: {e}", file=sys.stderr)
+                print(f"⚠️ DashScope 诊断调用失败: {e}", file=sys.stderr)
+
+        # 3. 硅基流动 SiliconFlow 0 元保底
+        sf_key = os.getenv("SILICONFLOW_API_KEY", "")
+        if sf_key:
+            try:
+                with httpx.Client(timeout=30.0, trust_env=False) as client:
+                    resp = client.post(
+                        "https://api.siliconflow.cn/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {sf_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": "deepseek-ai/DeepSeek-V3",
+                            "messages": [
+                                {"role": "system", "content": "你是 N100 第二大脑的高级 AIOps 自治运维专家，诊断精准精炼。"},
+                                {"role": "user", "content": prompt}
+                            ],
+                            "temperature": 0.2,
+                            "max_tokens": 1200
+                        }
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        return data["choices"][0]["message"]["content"].strip()
+            except Exception as e:
+                print(f"⚠️ SiliconFlow 诊断调用失败: {e}", file=sys.stderr)
 
         # 降级：使用 Gemini
         if GEMINI_API_KEY:

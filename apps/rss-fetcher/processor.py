@@ -19,21 +19,39 @@ for p in env_paths:
 else:
     load_dotenv()
 
-VOLCENGINE_API_KEY = os.getenv("VOLCENGINE_API_KEY", "")
-VOLCENGINE_ENDPOINT_ID = os.getenv("VOLCENGINE_ENDPOINT_ID", "ep-20260809122445-td2g2")
+DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
+SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY", "")
 
-if not VOLCENGINE_API_KEY:
-    print("⚠️ 警告: 未找到 VOLCENGINE_API_KEY 环境变量！")
+def get_deepseek_client() -> tuple:
+    """获取 100% 传统免费大模型客户端 (优先 TokenGate 网关 ➔ 阿里百炼 ➔ 硅基流动)"""
+    # 1. 优先尝试本地/远程 TokenGate 中央网关
+    for base_url in ["http://127.0.0.1:8800/v1", "https://tg.donglida.com/v1", "https://tg.donglida.xyz/v1"]:
+        try:
+            with httpx.Client(timeout=3.0, trust_env=False) as c:
+                r = c.get(f"{base_url}/models")
+                if r.status_code == 200:
+                    return OpenAI(
+                        api_key="tg-sk",
+                        base_url=base_url,
+                        http_client=httpx.Client(trust_env=False, timeout=httpx.Timeout(60.0))
+                    ), "auto"
+        except Exception:
+            pass
 
-def get_deepseek_client() -> OpenAI:
+    # 2. 直连阿里百炼 DashScope (qwen3.7-plus / qwen3.7-flash 0元池)
+    if DASHSCOPE_API_KEY:
+        return OpenAI(
+            api_key=DASHSCOPE_API_KEY,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            http_client=httpx.Client(trust_env=False, timeout=httpx.Timeout(60.0))
+        ), "qwen3.7-plus"
+
+    # 3. 直连硅基流动 SiliconFlow (0元无限保底)
     return OpenAI(
-        api_key=VOLCENGINE_API_KEY,
-        base_url="https://ark.cn-beijing.volces.com/api/v3",
-        http_client=httpx.Client(
-            trust_env=False,
-            timeout=httpx.Timeout(45.0, connect=10.0, read=45.0, write=15.0)
-        )
-    )
+        api_key=SILICONFLOW_API_KEY or "sk-wewpjlyfvwflfcqivobyumvhybqldextibizkxtkmajkkqvs",
+        base_url="https://api.siliconflow.cn/v1",
+        http_client=httpx.Client(trust_env=False, timeout=httpx.Timeout(60.0))
+    ), "deepseek-ai/DeepSeek-V3"
 
 def is_primarily_chinese(text: str) -> bool:
     """判断文本是否主要为中文"""
@@ -48,7 +66,7 @@ def translate_with_deepseek(text: str) -> str:
     if is_primarily_chinese(text):
         return text
         
-    client = get_deepseek_client()
+    client, model_name = get_deepseek_client()
     system_prompt = "你是一位专业的资深中英文翻译专家。你的任务是将用户提供的英文文本完美翻译为中文。为了保留英文原意，请直接返回'原文+中文翻译'的混合排版格式。即：一段英文，紧跟着一段对应的中文翻译。必须严格保留原文的Markdown符号及排版格式。若输入本身已是中文，请原样返回。"
     
     # 截断输入避免爆上下文与超时
@@ -56,9 +74,9 @@ def translate_with_deepseek(text: str) -> str:
     prompt = f"请翻译以下文本：\n\n{truncated_input}"
     
     try:
-        print("⏳ 正在使用火山方舟 DeepSeek 进行全文翻译 (含中英对照)...")
+        print("⏳ 正在使用 AI 引擎进行全文翻译 (含中英对照)...")
         stream = client.chat.completions.create(
-            model=VOLCENGINE_ENDPOINT_ID,
+            model=model_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
@@ -74,11 +92,11 @@ def translate_with_deepseek(text: str) -> str:
         result = "".join(chunks).strip()
         return result if result else text
     except Exception as e:
-        print(f"⚠️ DeepSeek 翻译失败: {e}")
+        print(f"⚠️ 翻译调用失败: {e}")
         return text
 
 def generate_summary_with_deepseek(content: str, is_raw_content: bool = True) -> str:
-    client = get_deepseek_client()
+    client, model_name = get_deepseek_client()
     
     if is_raw_content:
         prompt = f"""你是一个高效的知识管理助手。请对以下内容进行简短总结，提取核心观点，并输出 3-5 个中文标签。
@@ -97,9 +115,9 @@ def generate_summary_with_deepseek(content: str, is_raw_content: bool = True) ->
         prompt = content[:6000]
         
     try:
-        print("⏳ 正在使用火山方舟 DeepSeek 生成深度简报...")
+        print("⏳ 正在使用 AI 引擎生成深度简报...")
         stream = client.chat.completions.create(
-            model=VOLCENGINE_ENDPOINT_ID,
+            model=model_name,
             messages=[
                 {"role": "system", "content": "你是一个专业的情报分析师。"},
                 {"role": "user", "content": prompt}
@@ -115,7 +133,7 @@ def generate_summary_with_deepseek(content: str, is_raw_content: bool = True) ->
         result = "".join(chunks).strip()
         return result if result else "摘要生成为空。"
     except Exception as e:
-        print(f"⚠️ DeepSeek 生成总结失败: {e}")
+        print(f"⚠️ 生成总结失败: {e}")
         return "摘要生成失败。"
 
 def analyze_github_repo(repo_url: str, readme_content: str) -> tuple:

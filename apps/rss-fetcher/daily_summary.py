@@ -30,7 +30,7 @@ if project_root not in sys.path:
 if tg_bot_dir not in sys.path:
     sys.path.insert(0, tg_bot_dir)
 
-from processor import get_deepseek_client, VOLCENGINE_ENDPOINT_ID
+from processor import get_deepseek_client
 
 VAULT_BASE = Path("/opt/obsidian-brain-data" if Path("/opt/obsidian-brain-data").exists() else Path.home() / "dev/nas-gatekeeper/SecondBrain-Quartz/content/notes")
 CLIPPINGS_DIR = VAULT_BASE / "Auto_Clippings"
@@ -114,10 +114,10 @@ def generate_daily_digest(target_date: str = None) -> Path | None:
 {"".join(context_blocks[:25])}
 """
 
-    client = get_deepseek_client()
+    client, model_name = get_deepseek_client()
     try:
         stream = client.chat.completions.create(
-            model=VOLCENGINE_ENDPOINT_ID,
+            model=model_name,
             messages=[
                 {"role": "system", "content": "你是一位顶尖的第二大脑首席情报分析师。"},
                 {"role": "user", "content": prompt}
