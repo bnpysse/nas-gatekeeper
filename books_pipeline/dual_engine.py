@@ -25,62 +25,117 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# 单模型单日绝对安全熔断线 (Tokens/天)，官方上限 200万，我们严格卡在 150万，预留 50万缓冲
-DAILY_SAFE_LIMIT = 1_500_000
+class QuotaExhaustedError(Exception):
+    """当所有可用 0 成本免费额度达到预设安全红线时触发熔断休眠保护"""
+    pass
 
-# 内存级今日消耗缓存 (减少高频查询 Turso 负担，每 60 秒刷新一次)
+
+# 三大受支持的火山方舟体验官 1:1 返还模型矩阵 (存量包共计 604 万，单日返还上限 200万)
+# 严格设置单日安全消耗上限，确保：
+# 1. 绝对不超单模型现存资源包 (Pro ~1.64M, GLM-5.2 ~2.46M, Flash ~1.93M)
+# 2. 跨模型总消耗严格 <= 180 万/天，在次日 10:00 前 100% 被 1:1 返还覆盖，实现长效 0 成本运转！
+VOLC_MODELS = [
+    {
+        "name": "DeepSeek-V4-Pro",
+        "endpoint": getattr(LibraryConfig, "ENDPOINT_DEEPSEEK_PRO", "ep-20260820195716-snkzx"),
+        "daily_limit": 1_000_000,
+        "desc": "深度去水与全局脉络第一主力"
+    },
+    {
+        "name": "GLM-5.2",
+        "endpoint": getattr(LibraryConfig, "ENDPOINT_GLM_52", "ep-20260814105356-zvsw5"),
+        "daily_limit": 1_200_000,
+        "desc": "清华智谱超长文本精讲高阶主力"
+    },
+    {
+        "name": "DeepSeek-V4-Flash",
+        "endpoint": getattr(LibraryConfig, "ENDPOINT_DEEPSEEK_FLASH", "ep-20260809122445-td2g2"),
+        "daily_limit": 1_200_000,
+        "desc": "极速清洗与结构化提炼接力底座"
+    }
+]
+
+# 单日火山算力跨模型总消耗上限 (官方 1:1 返还采集上限 200万/天，我们设为 180万，预留 20万绝对安全垫)
+DAILY_VOLC_AGGREGATE_CAP = 1_800_000
+
+# 永久拉黑/禁用的模型与端点 (返还比仅 0.2 或具有未知资费风险)
+VOLC_BANNED_ENDPOINTS = [
+    "ep-20260814105629-t99mw",  # Doubao-Evolving 豆包自进化
+]
+
+# 内存级今日消耗缓存 (减少高频查询 Turso 负担，每 30 秒刷新一次)
 _USAGE_CACHE = {}
 _LAST_CACHE_TIME = 0.0
 
 
-async def get_today_tokens_consumed(provider: str, model_name: str) -> int:
-    """查询今日 00:00 至今某模型在 Turso 台账中累计消耗的 Tokens"""
+async def get_today_tokens_consumed(provider: str = None, model_name: str = None) -> int:
+    """查询今日 00:00 至今某模型或某 Provider 在 Turso 台账中累计消耗的 Tokens"""
     global _USAGE_CACHE, _LAST_CACHE_TIME
     now = time.time()
     
     # 缓存 30 秒有效
-    cache_key = f"{provider}:{model_name}"
-    if now - _LAST_CACHE_TIME < 30.0 and cache_key in _USAGE_CACHE:
-        return _USAGE_CACHE[cache_key]
-        
-    try:
-        rows = await execute_turso("""
-            SELECT provider, model_name, sum(total_tokens) as t_tokens 
-            FROM library_usage_ledger 
-            WHERE date(created_at) = date('now')
-            GROUP BY provider, model_name;
-        """)
-        new_cache = {}
-        for r in rows:
-            p = r.get("provider", "")
-            m = r.get("model_name", "")
-            tok = int(float(r.get("t_tokens") or 0))
-            new_cache[f"{p}:{m}"] = tok
-        _USAGE_CACHE = new_cache
-        _LAST_CACHE_TIME = now
-        return _USAGE_CACHE.get(cache_key, 0)
-    except Exception as e:
-        logger.warning(f"查询今日 Token 消耗异常: {e}")
-        return 0
+    if now - _LAST_CACHE_TIME >= 30.0 or not _USAGE_CACHE:
+        try:
+            rows = await execute_turso("""
+                SELECT provider, model_name, sum(total_tokens) as t_tokens 
+                FROM library_usage_ledger 
+                WHERE date(created_at) = date('now')
+                GROUP BY provider, model_name;
+            """)
+            new_cache = {}
+            for r in rows:
+                p = r.get("provider", "")
+                m = r.get("model_name", "")
+                tok = int(float(r.get("t_tokens") or 0))
+                new_cache[f"{p}:{m}"] = tok
+            _USAGE_CACHE = new_cache
+            _LAST_CACHE_TIME = now
+        except Exception as e:
+            logger.warning(f"查询今日 Token 消耗异常: {e}")
 
+    if provider and model_name:
+        return _USAGE_CACHE.get(f"{provider}:{model_name}", 0)
+    elif provider:
+        total = 0
+        for k, v in _USAGE_CACHE.items():
+            if k.startswith(f"{provider}:"):
+                total += v
+        return total
+    return sum(_USAGE_CACHE.values())
 
-VOLC_PRO_SAFE_LIMIT = 1_400_000    # Pro 当前有 156万 存量包，单日严控 140万，次日 1:1 回血
-VOLC_FLASH_SAFE_LIMIT = 1_800_000  # Flash 当前有 193.8万 存量包，单日严控 180万，次日 1:1 回血
 
 async def select_optimal_llm_channel(preferred_endpoint: str = None) -> Tuple[str, str, str]:
     """
     智能 100% 绝对 0 成本算力路由中枢：
-    第一主力：国家超算互联网 (SCNet-Max · 1000万超算旗舰算力 · 1个月到期优先消灭)
-    第二主力：阿里百炼 10 大精确版本化免费模型 (用完即停 HTTP 403 物理硬锁)
-    第三主力：Google Gemini 3.5-Flash-Lite (每日 1500 次免费)
-    彻底物理隔离火山方舟等具有扣费风险的渠道！
+    严格在火山方舟三大体验官 1:1 返还模型 (DeepSeek-V4-Pro / GLM-5.2 / DeepSeek-V4-Flash) 之间智能轮巡调度；
+    单日跨模型总消耗硬锁 180 万（低于 200 万每日采集返还上限）；
+    若达到上限，自动触发 QuotaExhaustedError 熔断休眠，坚决不向任何收费渠道渗透！
     """
-    # 1. 绝对第一主力：国家超算中心 SCNet-Max (1000万额度优先消灭)
-    if getattr(LibraryConfig, "SCNET_API_KEY", None):
-        return ("scnet", getattr(LibraryConfig, "MODEL_SCNET", "SCNet-Max"), "SCNet-Max")
+    total_volc_today = await get_today_tokens_consumed(provider="VolcEngine")
+    if total_volc_today >= DAILY_VOLC_AGGREGATE_CAP:
+        raise QuotaExhaustedError(
+            f"今日火山免费算力累计消耗 ({total_volc_today:,} tokens) 已达 {DAILY_VOLC_AGGREGATE_CAP:,} 安全上限，"
+            f"自动熔断休眠保护，待次日 10:00 资源包 1:1 返还后再行调度。"
+        )
 
-    # 2. 第二主力：阿里百炼 10 大精确版本化免费模型矩阵挂帅接管 (用尽 403 自动秒切下一免费模型)
-    return ("dashscope", "qwen3.7-plus", "Qwen3.7-Plus")
+    # 如果指定了偏好端点且合法
+    if preferred_endpoint:
+        if preferred_endpoint in VOLC_BANNED_ENDPOINTS:
+            logger.warning(f"端点 {preferred_endpoint} 处于黑名单中，拒绝调度，切换为主力轮巡...")
+        else:
+            for m in VOLC_MODELS:
+                if m["endpoint"] == preferred_endpoint or m["name"].lower() in preferred_endpoint.lower():
+                    used = await get_today_tokens_consumed(provider="VolcEngine", model_name=m["name"])
+                    if used < m["daily_limit"]:
+                        return ("volcengine", m["endpoint"], m["name"])
+
+    # 优先级轮巡：Pro -> GLM-5.2 -> Flash
+    for m in VOLC_MODELS:
+        used = await get_today_tokens_consumed(provider="VolcEngine", model_name=m["name"])
+        if used < m["daily_limit"]:
+            return ("volcengine", m["endpoint"], m["name"])
+
+    raise QuotaExhaustedError("三大免费主力模型 (Pro, GLM-5.2, Flash) 今日配额均已达单模型安全上限，自动休眠保护。")
 
 
 # 阿里百炼官方提供且已开启“用完即停”的精确版本化免费大模型矩阵 (按到期时间严格升序排列，全力在到期前全额榨干)
@@ -297,13 +352,12 @@ async def call_volcengine_llm(
     system_prompt: str = "",
     temperature: float = 0.3,
     max_tokens: int = 2800,
-    max_retries: int = 5,
+    max_retries: int = 4,
     book_id: str = "",
     task_name: str = "",
     model_label: str = "DeepSeek-V4-Pro"
 ) -> str:
-    """调用火山方舟 VolcEngine (DeepSeek-V4-Pro / Flash 每日循环回血池)，带自动重试与精准 Token 台账"""
-    ep = endpoint or LibraryConfig.ENDPOINT_DEEPSEEK_PRO
+    """调用火山方舟 VolcEngine 体验官 1:1 返还通道，带多模型接力、退避重试与精准 Token 台账"""
     url = f"{LibraryConfig.VOLCENGINE_BASE_URL}/chat/completions"
     headers = {
         "Authorization": f"Bearer {LibraryConfig.VOLCENGINE_API_KEY}",
@@ -314,43 +368,59 @@ async def call_volcengine_llm(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
-    payload = {
-        "model": ep,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens
-    }
+    # 确定候选端点队列 (若当前端点失败，自动在其余合规 0 成本模型中接力)
+    cur_ep = endpoint or getattr(LibraryConfig, "ENDPOINT_DEEPSEEK_PRO", "ep-20260820195716-snkzx")
+    candidates = [cur_ep] + [m["endpoint"] for m in VOLC_MODELS if m["endpoint"] != cur_ep]
 
-    backoff = 2.0
-    t0 = time.time()
-    for attempt in range(1, max_retries + 1):
-        try:
-            async with httpx.AsyncClient(timeout=180.0, trust_env=False) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                if resp.status_code == 429:
-                    logger.warning(f"⚠️ VolcEngine 并发限流 (HTTP 429), 退避重试 {attempt}/{max_retries} (等待 {backoff:.1f}s)...")
-                    await asyncio.sleep(backoff)
-                    backoff *= 1.8
-                    continue
-                resp.raise_for_status()
-                data = resp.json()
+    last_err = None
+    for target_ep in candidates:
+        if target_ep in VOLC_BANNED_ENDPOINTS:
+            continue
 
-                if book_id:
+        if "zvsw5" in target_ep or "glm" in target_ep.lower():
+            label = "GLM-5.2"
+        elif "snkzx" in target_ep or "pro" in target_ep.lower():
+            label = "DeepSeek-V4-Pro"
+        elif "td2g2" in target_ep or "flash" in target_ep.lower():
+            label = "DeepSeek-V4-Flash"
+        else:
+            label = model_label or "VolcEngine-Model"
+
+        payload = {
+            "model": target_ep,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+
+        backoff = 2.0
+        t0 = time.time()
+        for attempt in range(1, max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=120.0, trust_env=False) as client:
+                    resp = await client.post(url, headers=headers, json=payload)
+                    if resp.status_code == 429:
+                        logger.warning(f"⚠️ VolcEngine {label} 并发限流 (HTTP 429), 退避重试 {attempt}/{max_retries}...")
+                        await asyncio.sleep(backoff)
+                        backoff *= 1.8
+                        continue
+                    if resp.status_code in [401, 403, 404]:
+                        logger.error(f"🚨 VolcEngine {label} 鉴权或端点异常 (HTTP {resp.status_code}): {resp.text[:100]}")
+                        last_err = f"HTTP {resp.status_code}: {resp.text[:80]}"
+                        break
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                    usage = data.get("usage", {})
+                    p_tokens = usage.get("prompt_tokens", int(len(prompt) * 0.6))
+                    c_tokens = usage.get("completion_tokens", 0)
+                    t_tokens = usage.get("total_tokens", p_tokens + c_tokens)
+
+                    # 无论是否有 book_id，100% 记录至 Turso 台账确保额度追踪无遗漏
                     try:
-                        usage = data.get("usage", {})
-                        p_tokens = usage.get("prompt_tokens", 0)
-                        c_tokens = usage.get("completion_tokens", 0)
-                        if "zvsw5" in ep or "glm" in ep.lower():
-                            label = "GLM-5.2"
-                        elif "snkzx" in ep or "pro" in ep.lower():
-                            label = "DeepSeek-V4-Pro"
-                        elif "td2g2" in ep or "flash" in ep.lower():
-                            label = "DeepSeek-V4-Flash"
-                        else:
-                            label = model_label or "VolcEngine-Model"
                         await record_usage(
-                            book_id=book_id,
-                            task_name=task_name or "VolcEngine_Inference",
+                            book_id=book_id or "system_general",
+                            task_name=task_name or f"Volc_{label}",
                             provider="VolcEngine",
                             model_name=label,
                             prompt_tokens=p_tokens,
@@ -362,25 +432,17 @@ async def call_volcengine_llm(
                     except Exception as err:
                         logger.warning(f"记录 Token 台账异常: {err}")
 
-                return data["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            if attempt < max_retries:
-                await asyncio.sleep(backoff)
-                backoff *= 1.5
-                continue
-            logger.warning(f"VolcEngine 调用异常 ({e})，触发容灾降级...")
-            break
+                    return data["choices"][0]["message"]["content"].strip()
+            except Exception as e:
+                last_err = str(e)
+                if attempt < max_retries:
+                    await asyncio.sleep(backoff)
+                    backoff *= 1.5
+                    continue
+                logger.warning(f"VolcEngine {label} 调用重试耗尽 ({e})，尝试接力下一个合规模型...")
+                break
 
-    # 降级到阿里百炼 Qwen-Plus
-    return await call_dashscope_llm(
-        model=LibraryConfig.MODEL_DISTILLER,
-        prompt=prompt,
-        system_prompt=system_prompt,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        book_id=book_id,
-        task_name=f"{task_name}_Fallback"
-    )
+    raise RuntimeError(f"所有可用 0 成本模型接力均未成功 (最后错误: {last_err})")
 
 
 async def call_gemini_llm(

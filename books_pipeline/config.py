@@ -33,12 +33,12 @@ else:
 
 
 class LibraryConfig:
-    # 1. 火山方舟 VolcEngine (备用/禁用)
+    # 1. 火山方舟 VolcEngine 满血旗舰 (每日循环返还 + 604万有效资源包)
     VOLCENGINE_API_KEY = os.getenv("VOLCENGINE_API_KEY", "")
     VOLCENGINE_BASE_URL = os.getenv("VOLCENGINE_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
-    ENDPOINT_DEEPSEEK_PRO = os.getenv("VOLCENGINE_ENDPOINT_DEEPSEEK_PRO", "")
-    ENDPOINT_DEEPSEEK_FLASH = os.getenv("VOLCENGINE_ENDPOINT_DEEPSEEK_FLASH", "")
-    ENDPOINT_GLM_52 = os.getenv("VOLCENGINE_ENDPOINT_GLM", "")
+    ENDPOINT_DEEPSEEK_PRO = os.getenv("VOLCENGINE_ENDPOINT_DEEPSEEK_PRO", "ep-20260820195716-snkzx")
+    ENDPOINT_DEEPSEEK_FLASH = os.getenv("VOLCENGINE_ENDPOINT_DEEPSEEK_FLASH", "ep-20260809122445-td2g2")
+    ENDPOINT_GLM_52 = os.getenv("VOLCENGINE_ENDPOINT_GLM", "ep-20260814105356-zvsw5")
 
     # 2. 阿里百炼 DashScope 旗舰配置
     DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
