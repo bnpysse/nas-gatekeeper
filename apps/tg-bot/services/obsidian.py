@@ -188,28 +188,51 @@ async def save_to_obsidian_inbox(title: str, url: str, content: str, source_type
         rag_section = ""
         if similar_notes:
             rag_section = "\n\n## 🔗 AI 图谱双向关联\n"
-            context_text = "\n".join([f"- {n['title']}: {n['content'][:100]}..." for n in similar_notes])
-            prompt = f"当前笔记标题：{title}\n相似的历史笔记如下：\n{context_text}\n请你作为 Obsidian 知识库管理员，用一段非常简短的话（不超过100字）总结当前笔记与这些历史笔记的关联，并在文中直接使用确切的双向链接格式 [[历史笔记的标题]] 引用它们。"
+            context_text = "\n".join([f"- 笔记{i+1}: {n['title']} (相关片段: {n['content'][:80]}...)" for i, n in enumerate(similar_notes)])
+            prompt = (
+                f"当前笔记标题：{title}\n"
+                f"相似的历史笔记如下：\n{context_text}\n"
+                "请你作为 Obsidian 知识库管理员，用一段极简练的话（80字以内）总结当前笔记与这些历史笔记的关联。"
+                "请直接在关联分析中使用形如 [[笔记1]]、[[笔记2]] 的标记来指代对应的历史笔记。"
+            )
             try:
                 client = get_volcengine_async_client()
                 resp = await client.chat.completions.create(
                     model=Config.VOLCENGINE_ENDPOINT_ID or "ep-20260809122445-td2g2",
                     messages=[{"role": "user", "content": prompt}]
                 )
-                rag_section += resp.choices[0].message.content + "\n"
+                text = resp.choices[0].message.content.strip()
+                
+                # 将 [[笔记1]]、[[笔记2]] 或包含标题的 [[...]] 替换为真实的内部链接
+                for i, n in enumerate(similar_notes):
+                    d_id = n.get("doc_id", "")
+                    d_title = n.get("title", "") or d_id
+                    # 确定相对路径
+                    if d_id.startswith("Auto_") or d_id.startswith("Raw_"):
+                        target_link = f"[{d_title}](<../Auto_Clippings/{d_id}>)"
+                    else:
+                        target_link = f"[{d_title}](<./{d_id}>)"
+                    
+                    # 替换占位符及标题
+                    text = text.replace(f"[[笔记{i+1}]]", target_link)
+                    text = text.replace(f"[[{d_title}]]", target_link)
+                    
+                rag_section += text + "\n"
             except Exception as e:
                 logger.error(f"大模型生成双链语境失败，降级为直列: {e}")
                 for n in similar_notes:
-                    rag_section += f"- [[{n['title']}]]\n"
+                    d_id = n.get("doc_id", "")
+                    d_title = n.get("title", "") or d_id
+                    if d_id.startswith("Auto_") or d_id.startswith("Raw_"):
+                        rag_section += f"- [{d_title}](<../Auto_Clippings/{d_id}>)\n"
+                    else:
+                        rag_section += f"- [{d_title}](<./{d_id}>)\n"
                     
             content += rag_section
     except Exception as e:
         logger.error(f"RAG 模块执行异常: {e}")
         embedding = []
 
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    date_prefix = datetime.now().strftime("%Y%m%d_%H%M")
-    
     clean_title = sanitize_filename(title)
     
     # 确定前缀
@@ -227,14 +250,65 @@ async def save_to_obsidian_inbox(title: str, url: str, content: str, source_type
     elif source_type == "Web":
         prefix = "WA"
         
-    filename = f"[{prefix}]{clean_title}_{date_prefix}.md"
-    file_path = inbox_dir / filename
+    # 核心保护机制：如果该笔记此前已存在（如重新生成或补全），必须沿用最初捕获时间与原有文件名，禁止跳到最前端！
+    orig_capture_time = None
+    file_path = None
+    existing_files = list(inbox_dir.glob(f"[{prefix}]{clean_title}*.md"))
+    if existing_files:
+        file_path = existing_files[0]
+        try:
+            old_txt = file_path.read_text(encoding="utf-8", errors="ignore")
+            m_cap = re.search(r'captured_at:\s*["\']?(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?)["\']?', old_txt)
+            if m_cap:
+                orig_capture_time = m_cap.group(1).replace("T", " ")
+            else:
+                m_time = re.search(r'捕获时间[^\n\r`]*`(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?)`', old_txt)
+                if m_time:
+                    orig_capture_time = m_time.group(1).replace("T", " ")
+        except Exception:
+            pass
+
+    if orig_capture_time:
+        now_str = orig_capture_time if len(orig_capture_time) == 19 else f"{orig_capture_time}:00"
+    else:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        date_prefix = datetime.now().strftime("%Y%m%d_%H%M")
+        filename = f"[{prefix}]{clean_title}_{date_prefix}.md"
+        file_path = inbox_dir / filename
+
+    # 自动转换 Mermaid 图表为 Base64 矢量 SVG
+    if "```mermaid" in content and "https://mermaid.ink/svg/" not in content:
+        import base64
+        pattern = r'```mermaid\s*\n(.*?)\n```'
+        def _mermaid_repl(m):
+            code = m.group(1).strip()
+            obj = {"code": code, "mermaid": {"theme": "default"}}
+            b64 = base64.b64encode(json.dumps(obj).encode('utf-8')).decode('ascii')
+            svg_url = f"https://mermaid.ink/svg/{b64}"
+            return f"\n\n![架构流程图]({svg_url})\n\n<details><summary>📊 查看 Mermaid 流程图源码</summary>\n\n```mermaid\n{code}\n```\n</details>\n\n"
+        content = re.sub(pattern, _mermaid_repl, content, flags=re.DOTALL)
 
     import json
     safe_title = json.dumps(title, ensure_ascii=False)
     safe_url = json.dumps(url, ensure_ascii=False)
     safe_source = json.dumps(source_type, ensure_ascii=False)
     
+    # 自动生成 aliases 别名列表，确保 Obsidian 和 Quartz 无论用什么形式都能搜到并正确跳转
+    aliases = []
+    clean_t = title.strip()
+    if clean_t:
+        aliases.append(clean_t)
+    t_no_model = re.sub(r'^\[多模型\]\s*', '', clean_t).strip()
+    if t_no_model and t_no_model not in aliases:
+        aliases.append(t_no_model)
+    t_no_tags = re.sub(r'#[^\s#]+', '', t_no_model).strip()
+    if t_no_tags and t_no_tags not in aliases:
+        aliases.append(t_no_tags)
+    t_norm = re.sub(r'[?？!！_]+$', '', t_no_tags).strip()
+    if t_norm and t_norm not in aliases:
+        aliases.append(t_norm)
+    aliases_yaml = "\n".join([f"  - {json.dumps(a, ensure_ascii=False)}" for a in aliases])
+
     yaml_header = f"""---
 title: {safe_title}
 date: "{now_str}"
@@ -247,6 +321,8 @@ captured_at: "{now_str}"
 tags:
   - inbox/capture
   - source/{source_type.lower()}
+aliases:
+{aliases_yaml}
 status: unread
 ---
 \n
@@ -259,6 +335,14 @@ status: unread
 
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(yaml_header)
+
+    # 同步保持文件系统时间与实际捕获时间一致
+    try:
+        dt_obj = datetime.strptime(now_str, "%Y-%m-%d %H:%M:%S")
+        ts = dt_obj.timestamp()
+        os.utime(file_path, (ts, ts))
+    except Exception:
+        pass
 
     logger.info(f"成功保存 Markdown 笔记至 Inbox: {file_path}")
     
