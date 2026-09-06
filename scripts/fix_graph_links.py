@@ -35,7 +35,7 @@ def dump_md_frontmatter(meta: dict, body: str) -> str:
     return f"---\n{yaml_str}---\n{body.lstrip()}"
 
 def clean_title_for_alias(title: str) -> list[str]:
-    """生成笔记的若干有效别名"""
+    """生成笔记的若干有效别名（严格限制最大字节长度，防止 Quartz AliasRedirects 触发 ENAMETOOLONG）"""
     aliases = set()
     t = title.strip()
     if t:
@@ -49,7 +49,8 @@ def clean_title_for_alias(title: str) -> list[str]:
     t_norm = re.sub(r'[?？!！_]+$', '', t_no_tags).strip()
     if t_norm:
         aliases.add(t_norm)
-    return [a for a in aliases if len(a) >= 2]
+    # 严格限制：只有长度 >= 2 且 UTF-8 编码不超过 120 字节（约 40 个中文字符）的才保留为别名
+    return [a for a in aliases if len(a) >= 2 and len(a.encode('utf-8')) <= 120]
 
 def build_knowledge_index():
     """建立全库文档的标准化索引"""
@@ -166,8 +167,10 @@ def main():
                         current_aliases = [current_aliases]
                     elif not isinstance(current_aliases, list):
                         current_aliases = []
+                    # 过滤掉任何超过 120 字节的无效/超长别名
+                    current_aliases = [a for a in current_aliases if isinstance(a, str) and len(a.encode('utf-8')) <= 120]
                     new_aliases = list(dict.fromkeys(list(current_aliases) + wanted_aliases))
-                    if new_aliases != current_aliases:
+                    if new_aliases != meta.get("aliases", []):
                         meta["aliases"] = new_aliases
                         changed = True
                         alias_updated_count += 1

@@ -293,19 +293,19 @@ async def save_to_obsidian_inbox(title: str, url: str, content: str, source_type
     safe_url = json.dumps(url, ensure_ascii=False)
     safe_source = json.dumps(source_type, ensure_ascii=False)
     
-    # 自动生成 aliases 别名列表，确保 Obsidian 和 Quartz 无论用什么形式都能搜到并正确跳转
+    # 自动生成 aliases 别名列表，确保 Obsidian 和 Quartz 无论用什么形式都能搜到并正确跳转（限制不超过 120 字节）
     aliases = []
     clean_t = title.strip()
-    if clean_t:
+    if clean_t and len(clean_t.encode('utf-8')) <= 120:
         aliases.append(clean_t)
     t_no_model = re.sub(r'^\[多模型\]\s*', '', clean_t).strip()
-    if t_no_model and t_no_model not in aliases:
+    if t_no_model and len(t_no_model.encode('utf-8')) <= 120 and t_no_model not in aliases:
         aliases.append(t_no_model)
     t_no_tags = re.sub(r'#[^\s#]+', '', t_no_model).strip()
-    if t_no_tags and t_no_tags not in aliases:
+    if t_no_tags and len(t_no_tags.encode('utf-8')) <= 120 and t_no_tags not in aliases:
         aliases.append(t_no_tags)
     t_norm = re.sub(r'[?？!！_]+$', '', t_no_tags).strip()
-    if t_norm and t_norm not in aliases:
+    if t_norm and len(t_norm.encode('utf-8')) <= 120 and t_norm not in aliases:
         aliases.append(t_norm)
     aliases_yaml = "\n".join([f"  - {json.dumps(a, ensure_ascii=False)}" for a in aliases])
 
