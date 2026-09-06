@@ -25,3 +25,11 @@ notes_backup_from_n100/
 *.pfx
 *.p12
 .aider*
+
+# Ebooks & Pipeline Data
+*.epub
+*.pdf
+*.mobi
+*.azw3
+books_pipeline/downloads/
+books_pipeline/raw_texts/
