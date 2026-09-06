@@ -164,12 +164,17 @@ def enhance_with_rag_and_dual_links(title: str, content: str, filename: str) -> 
         loop.close()
         
         if similar_notes:
-            valid_similars = [n for n in similar_notes if n.get("id") != filename and n.get("title") != title]
+            valid_similars = [n for n in similar_notes if n.get("id") != filename and n.get("title") != title and n.get("doc_id") != filename]
             if valid_similars:
                 content += "\n\n## 🔗 知识库双向关联\n"
                 for n in valid_similars:
+                    doc_id = n.get("doc_id") or n.get("id") or ""
                     clean_target_title = re.sub(r'\[.*?\]', '', n.get("title", "")).strip(' _-')
-                    content += f"- [[{clean_target_title}]]\n"
+                    target_stem = Path(doc_id).stem if doc_id else ""
+                    if target_stem:
+                        content += f"- [[{target_stem}|{clean_target_title}]]\n"
+                    else:
+                        content += f"- [[{clean_target_title}]]\n"
                     
         return content, embedding
     except Exception as e:

@@ -26,36 +26,36 @@ class CascadingRouter:
 
     # 针对不同任务类型的最优梯队序列 (100% 绝对 0 元传统免费铁三角：阿里百炼 ➔ 魔搭社区 ➔ 硅基流动)
     TASK_CASCADES = {
-        # 1. 深度推理 / 架构推演 / 代码解构 / 考题命制 (千问 Max 临期抢跑 ➔ 魔搭 V4-Pro ➔ Kimi K3 ➔ 2350亿 ➔ 硅基保底)
+        # 1. 深度推理 / 架构推演 / 代码解构 / 考题命制 (千问 Max 临期抢跑 ➔ 七牛 V4-Pro ➔ Kimi K3 ➔ 七牛 V3)
         "reasoning": [
             {"provider": "dashscope", "model": "qwen3.7-max-2026-06-08", "alias": "dashscope/qwen3.7-max"},
-            {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Pro", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Pro"},
+            {"provider": "qiniu", "model": "deepseek/deepseek-v4-pro", "alias": "qiniu/deepseek/deepseek-v4-pro"},
             {"provider": "dashscope", "model": "kimi-k3", "alias": "dashscope/kimi-k3"},
-            {"provider": "modelscope", "model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "alias": "modelscope/Qwen/Qwen3-235B-A22B"},
-            {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
+            {"provider": "dashscope", "model": "qwen3.8-max-0902", "alias": "dashscope/qwen3.8-max"},
+            {"provider": "qiniu", "model": "deepseek-v3", "alias": "qiniu/deepseek-v3"},
         ],
-        # 2. 章节级 20% 极客干货去水提炼 / 讲义重构 (千问 Plus 临期抢跑 ➔ 魔搭 235B ➔ 千问 3.8 ➔ 魔搭 V4-Pro ➔ 保底)
+        # 2. 章节级 20% 极客干货去水提炼 / 讲义重构 (千问 Plus 临期抢跑 ➔ 七牛 V4-Flash ➔ 千问 3.8 ➔ 七牛 V3)
         "distill": [
             {"provider": "dashscope", "model": "qwen3.7-plus", "alias": "dashscope/qwen3.7-plus"},
-            {"provider": "modelscope", "model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "alias": "modelscope/Qwen/Qwen3-235B-A22B"},
+            {"provider": "qiniu", "model": "deepseek/deepseek-v4-flash", "alias": "qiniu/deepseek/deepseek-v4-flash"},
             {"provider": "dashscope", "model": "qwen3.8-27b", "alias": "dashscope/qwen3.8-27b"},
-            {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Pro", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Pro"},
-            {"provider": "modelscope", "model": "MiniMax/MiniMax-M1-80k", "alias": "modelscope/MiniMax/MiniMax-M1-80k"},
-            {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
+            {"provider": "dashscope", "model": "kimi-k3", "alias": "dashscope/kimi-k3"},
+            {"provider": "qiniu", "model": "deepseek-v3", "alias": "qiniu/deepseek-v3"},
         ],
-        # 3. 快速清洗 / 提取摘要 / 前置粗加工 (千问 3.7 Flash ➔ 魔搭 V4 Flash ➔ 硅基保底)
+        # 3. 快速清洗 / 提取摘要 / 前置粗加工 (七牛 V4 Flash ➔ 百炼 DS-V4-Flash ➔ 千问 3.7 Flash)
         "fast_clean": [
+            {"provider": "qiniu", "model": "deepseek/deepseek-v4-flash", "alias": "qiniu/deepseek/deepseek-v4-flash"},
+            {"provider": "dashscope", "model": "deepseek-v4-flash-0731", "alias": "dashscope/deepseek-v4-flash-0731"},
             {"provider": "dashscope", "model": "qwen3.7-flash-2026-07-15", "alias": "dashscope/qwen3.7-flash"},
-            {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Flash-0731", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Flash-0731"},
-            {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
+            {"provider": "qiniu", "model": "deepseek-v3", "alias": "qiniu/deepseek-v3"},
         ],
-        # 4. 通用对话 / 问答 / 伴读答疑
+        # 4. 通用对话 / 问答 / 伴读答疑 (七牛 V3 / V4 ➔ 阿里百炼主力群)
         "general": [
+            {"provider": "qiniu", "model": "deepseek-v3", "alias": "qiniu/deepseek-v3"},
             {"provider": "dashscope", "model": "qwen3.7-max-2026-06-08", "alias": "dashscope/qwen3.7-max"},
             {"provider": "dashscope", "model": "qwen3.7-plus", "alias": "dashscope/qwen3.7-plus"},
-            {"provider": "modelscope", "model": "deepseek-ai/DeepSeek-V4-Pro", "alias": "modelscope/deepseek-ai/DeepSeek-V4-Pro"},
-            {"provider": "modelscope", "model": "Qwen/Qwen3-235B-A22B-Thinking-2507", "alias": "modelscope/Qwen/Qwen3-235B-A22B"},
-            {"provider": "siliconflow", "model": "deepseek-ai/DeepSeek-V3", "alias": "deepseek-v3"},
+            {"provider": "dashscope", "model": "qwen3.8-max-0902", "alias": "dashscope/qwen3.8-max"},
+            {"provider": "qiniu", "model": "deepseek/deepseek-v4-flash", "alias": "qiniu/deepseek/deepseek-v4-flash"},
         ],
     }
 
@@ -146,11 +146,11 @@ class CascadingRouter:
                 last_error = e
                 continue
 
-        # 4. 如果所有第一第二梯队均未成功，由 SiliconFlow DeepSeek-V3 兜底保底
-        logger.error("🚨 级联梯队全部耗尽，触发终极 SiliconFlow DeepSeek-V3 强制保底...")
+        # 4. 如果所有第一第二梯队均未成功，由七牛云 300万免费包 deepseek-v3 兜底保底 (100% 免费)
+        logger.error("🚨 级联梯队全部耗尽，触发七牛云 300万免费包 deepseek-v3 强制保底...")
         data = await self._call_provider(
-            provider="siliconflow",
-            model_id="deepseek-ai/DeepSeek-V3",
+            provider="qiniu",
+            model_id="deepseek-v3",
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens
@@ -158,8 +158,8 @@ class CascadingRouter:
         return {
             "status": "success",
             "content": data["choices"][0]["message"]["content"].strip(),
-            "provider": "siliconflow",
-            "model_used": "deepseek-ai/DeepSeek-V3 (保底通道)",
+            "provider": "qiniu",
+            "model_used": "qiniu/deepseek-v3 (300万包保底通道)",
             "tokens_used": 0,
             "duration_seconds": 1.0,
             "raw_response": data
@@ -205,10 +205,17 @@ class CascadingRouter:
                 "Authorization": f"Bearer {settings.DASHSCOPE_API_KEY}",
                 "Content-Type": "application/json"
             }
+        elif provider == "qiniu":
+            url = "https://api.qnaigc.com/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {settings.QINIU_API_KEY}",
+                "Content-Type": "application/json"
+            }
         else:
             raise ValueError(f"未知 Provider: {provider}")
 
-        async with httpx.AsyncClient(timeout=180.0, trust_env=False) as client:
+        trust_env = (provider == "qiniu")
+        async with httpx.AsyncClient(timeout=180.0, trust_env=trust_env) as client:
             resp = await client.post(url, headers=headers, json=payload)
             if resp.status_code == 403:
                 raise PermissionError("HTTP 403 / 账户风控锁定")
@@ -263,6 +270,9 @@ class CascadingRouter:
                 elif provider == "siliconflow":
                     url = "https://api.siliconflow.cn/v1/chat/completions"
                     headers = {"Authorization": f"Bearer {settings.SILICONFLOW_API_KEY}", "Content-Type": "application/json"}
+                elif provider == "qiniu":
+                    url = "https://api.qnaigc.com/v1/chat/completions"
+                    headers = {"Authorization": f"Bearer {settings.QINIU_API_KEY}", "Content-Type": "application/json"}
                 else:
                     url = "https://api.siliconflow.cn/v1/chat/completions"
                     headers = {"Authorization": f"Bearer {settings.SILICONFLOW_API_KEY}", "Content-Type": "application/json"}
@@ -276,7 +286,8 @@ class CascadingRouter:
                 }
 
                 accumulated_text = ""
-                async with httpx.AsyncClient(timeout=180.0, trust_env=False) as client:
+                trust_env = (provider == "qiniu")
+                async with httpx.AsyncClient(timeout=180.0, trust_env=trust_env) as client:
                     async with client.stream("POST", url, headers=headers, json=payload) as resp:
                         if resp.status_code == 403:
                             raise PermissionError("HTTP 403")
@@ -309,11 +320,12 @@ class CascadingRouter:
                 logger.warning(f"⚠️ [TokenGate 2.0 流式容灾] {alias} 异常 ({e})，切换下一候选...")
                 continue
 
-        # 终极大兜底
-        async with httpx.AsyncClient(timeout=180.0, trust_env=False) as client:
-            url = "https://api.siliconflow.cn/v1/chat/completions"
-            headers = {"Authorization": f"Bearer {settings.SILICONFLOW_API_KEY}", "Content-Type": "application/json"}
-            payload = {"model": "deepseek-ai/DeepSeek-V3", "messages": messages, "temperature": temperature, "max_tokens": max_tokens, "stream": True}
+        # 终极 100% 免费保底 (七牛云 300万包)
+        trust_env = True
+        async with httpx.AsyncClient(timeout=180.0, trust_env=trust_env) as client:
+            url = "https://api.qnaigc.com/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {settings.QINIU_API_KEY}", "Content-Type": "application/json"}
+            payload = {"model": "deepseek-v3", "messages": messages, "temperature": temperature, "max_tokens": max_tokens, "stream": True}
             async with client.stream("POST", url, headers=headers, json=payload) as resp:
                 async for line in resp.aiter_lines():
                     if line.startswith("data: "):

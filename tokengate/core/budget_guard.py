@@ -37,14 +37,26 @@ class BudgetGuard:
         "volcengine/doubao-evolving": 0,
         "ep-20260814105629-t99mw": 0,
 
-        # ⚡ 硅基流动 0 元免费模型 (无限额度)
-        "siliconflow/deepseek-ai/DeepSeek-V3": 999_999_999,
-        "siliconflow/deepseek-ai/DeepSeek-R1": 999_999_999,
+        # ⚡ 硅基流动：彻底封杀对话/文本生成（限额 0，绝对禁止任何调用，杜绝任何欠费）
+        "siliconflow/deepseek-ai/DeepSeek-V3": 0,
+        "siliconflow/deepseek-ai/DeepSeek-R1": 0,
+        "siliconflow/Qwen/Qwen2.5-72B-Instruct": 0,
+        "siliconflow/zai-org/GLM-5.2": 0,
+        # 仅保留单价为 0.000000 的纯免费向量与语音模型
         "siliconflow/BAAI/bge-m3": 999_999_999,
+        "siliconflow/BAAI/bge-large-zh-v1.5": 999_999_999,
         "siliconflow/FunAudioLLM/SenseVoiceSmall": 999_999_999,
 
-        # 🌌 魔搭社区 ModelScope Serverless 免费池 (上限 2,000 次/天，安全硬顶 1,800 次/天)
-        "modelscope": 1_800,
+        # 🎈 七牛云 300万 Token 免费体验包 (单日安全水位 300,000 Tokens/天，总额 300万)
+        "qiniu": 300_000,
+        "qiniu/deepseek-v3": 300_000,
+        "qiniu/deepseek/deepseek-v4-flash": 300_000,
+        "qiniu/deepseek/deepseek-v4-pro": 300_000,
+        "qiniu/qwen/qwen3.8-max": 300_000,
+        "qiniu/moonshotai/kimi-k3": 300_000,
+
+        # 🌌 魔搭社区 (ModelScope)：根据用户指示彻底停用，专供股票量化程序独占
+        "modelscope": 0,
         "modelscope/deepseek-ai/DeepSeek-V4-Pro": 1_800,
         "modelscope/deepseek-ai/DeepSeek-V4-Flash-0731": 1_800,
         "modelscope/Qwen/Qwen3-235B-A22B": 1_800,
@@ -125,6 +137,8 @@ class BudgetGuard:
         if cleaned.startswith("dashscope/"):
             return raw_model
         if cleaned.startswith("volcengine/"):
+            return raw_model
+        if cleaned.startswith("qiniu/"):
             return raw_model
             
         if cleaned in self.MODEL_ALIAS_MAP:
@@ -240,6 +254,15 @@ class BudgetGuard:
                 "task_desc": "极速清洗 / 双语速读"
             },
             {
+                "key": "qiniu/deepseek/deepseek-v4-pro",
+                "name": "DeepSeek-V4-Pro (七牛)",
+                "provider": "七牛云 (Qiniu AI)",
+                "limit": 300_000,
+                "official_cap": 3_000_000,
+                "rebate_rate": "300万 Token 免费包",
+                "task_desc": "新一代深度推理 / 90天免费"
+            },
+            {
                 "key": "siliconflow/deepseek-ai/DeepSeek-V3",
                 "name": "DeepSeek-V3 (671B MoE)",
                 "provider": "硅基流动 (SiliconFlow)",
@@ -252,7 +275,7 @@ class BudgetGuard:
 
         reservoirs = []
         total_used_today = 0
-        total_safe_capacity = 5_400_000 # 3 大旗舰 180 万合计
+        total_safe_capacity = 5_700_000
 
         for m in tracked_models:
             used = self.get_current_usage(m["key"], today)

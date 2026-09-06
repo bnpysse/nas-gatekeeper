@@ -157,14 +157,18 @@ def build_toutiao_url(group_id: str) -> str:
     return f"https://www.toutiao.com/video/{group_id}/"
 
 def resolve_short_link(url: str) -> str:
-    """跟随 App 短链 301 重定向获取真实落地地址"""
+    """跟随 App 短链 301 重定向获取真实落地地址，若已下架或 404 直接熔断"""
     session = get_direct_session()
     headers = {"User-Agent": DESKTOP_UA}
     try:
         resp = session.get(url, headers=headers, allow_redirects=True, timeout=10)
+        if resp.status_code == 404 or "404 not found" in resp.text.lower():
+            raise ValueError("今日头条短链返回 404 Not Found (内容已被删除或链接失效)")
         landed = resp.url
         logger.info(f"短链落地解析: {url[:40]}... → {landed[:70]}...")
         return landed
+    except ValueError:
+        raise
     except Exception as e:
         logger.warning(f"短链跳转失败使用原 URL: {e}")
         return url

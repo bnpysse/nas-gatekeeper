@@ -81,32 +81,37 @@ async def distill_single_chapter(
 ### 4. 生产实战避坑指南 (Gotchas & Best Practices)
 （一针见血指出实际开发中最容易引发 Bug、性能问题或内存泄漏的点，及防范对策）
 """
-        try:
-            distilled_md = await call_volcengine(
-                LibraryConfig.MODEL_DISTILLER, # 硅基流动 DeepSeek-V3 (671B MoE · 原生永久 0 元免费)
-                prompt,
-                system_prompt,
-                temperature=0.3,
-                max_tokens=2800,
-                book_id=book_id,
-                task_name=f"章节精读_{chapter_title[:20]}"
-            )
-            return {
-                "chapter_title": chapter_title,
-                "start_chunk": start_chunk,
-                "end_chunk": end_chunk,
-                "markdown": distilled_md,
-                "chars": len(distilled_md)
-            }
-        except Exception as e:
-            logger.error(f"❌ 章节 {chapter_title} 提炼失败: {e}")
-            return {
-                "chapter_title": chapter_title,
-                "start_chunk": start_chunk,
-                "end_chunk": end_chunk,
-                "markdown": f"## 📌 {chapter_title}\n\n*(章节提炼异常: {e})*",
-                "chars": 0
-            }
+        for attempt in range(2):
+            try:
+                distilled_md = await call_volcengine(
+                    None,
+                    prompt,
+                    system_prompt,
+                    temperature=0.3,
+                    max_tokens=3000,
+                    book_id=book_id,
+                    task_name=f"章节精读_{chapter_title[:20]}"
+                )
+                if distilled_md and len(distilled_md.strip()) > 50 and "章节提炼异常" not in distilled_md:
+                    return {
+                        "chapter_title": chapter_title,
+                        "start_chunk": start_chunk,
+                        "end_chunk": end_chunk,
+                        "markdown": distilled_md,
+                        "chars": len(distilled_md)
+                    }
+            except Exception as e:
+                logger.warning(f"⚠️ 章节 {chapter_title} 第 {attempt+1} 次提炼失败: {e}")
+                await asyncio.sleep(1)
+
+        logger.error(f"❌ 章节 {chapter_title} 所有模型提炼尝试均失败，跳过该章节提炼。")
+        return {
+            "chapter_title": chapter_title,
+            "start_chunk": start_chunk,
+            "end_chunk": end_chunk,
+            "markdown": "",
+            "chars": 0
+        }
 
 
 async def run_deep_distillation(book_id: str = "elixir_and_phoenix_for_beginners"):

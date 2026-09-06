@@ -33,6 +33,7 @@ from db import execute_turso, float_array_to_blob, TURSO_URL, TURSO_TOKEN
 from bge_embedder import get_bge_m3_embeddings_batch, BATCH_SIZE
 from dual_engine import call_volcengine
 from deep_distiller import distill_single_chapter, generate_key_takeaways
+from extractor import extract_pdf_chapters, extract_epub_text_and_chapters
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,7 +56,7 @@ def get_gdrive_ebook_catalog() -> List[Dict[str, Any]]:
         return []
         
     items = json.loads(res.stdout)
-    valid_exts = {".epub", ".pdf", ".azw3", ".mobi"}
+    valid_exts = {".epub", ".pdf", ".azw3", ".mobi", ".txt", ".md"}
     
     # 核心技术关键词优先权
     tech_keywords = [
@@ -94,11 +95,14 @@ def get_gdrive_ebook_catalog() -> List[Dict[str, Any]]:
 
 
 async def is_book_already_processed(book_id: str) -> bool:
-    """检查书籍是否已完整入库并生成精读讲义"""
-    sql = "SELECT id, summary_chars FROM library_books WHERE id = ? OR id LIKE ?;"
+    """检查书籍是否已完整入库并生成精读讲义 (存在有效切块与讲义即视为已处理)"""
+    sql = "SELECT id, summary_chars, total_chunks FROM library_books WHERE id = ? OR id LIKE ?;"
     rows = await execute_turso(sql, [book_id, f"%{book_id}%"])
-    if rows and int(rows[0].get("summary_chars") or 0) > 5000:
-        return True
+    if rows:
+        summary_chars = int(rows[0].get("summary_chars") or 0)
+        total_chunks = int(rows[0].get("total_chunks") or 0)
+        if summary_chars > 0 and total_chunks > 0:
+            return True
     return False
 
 
@@ -112,53 +116,7 @@ def clean_book_id(filename: str) -> str:
     return cleaned[:80] or "unnamed_book"
 
 
-def extract_epub_text_and_chapters(file_path: Path) -> List[Dict[str, Any]]:
-    """轻量解析 EPUB 章节与文本内容"""
-    import zipfile
-    from bs4 import BeautifulSoup
-    
-    chapters = []
-    try:
-        with zipfile.ZipFile(file_path, 'r') as z:
-            html_files = [f for f in z.namelist() if f.endswith(('.html', '.xhtml', '.htm'))]
-            for idx, hfile in enumerate(html_files, 1):
-                try:
-                    content = z.read(hfile).decode('utf-8', errors='ignore')
-                    soup = BeautifulSoup(content, 'html.parser')
-                    
-                    # 优先查找 h1/h2/h3 标题，避免抓到通用的 title
-                    h_tag = soup.find(['h1', 'h2', 'h3'])
-                    if h_tag and h_tag.get_text().strip():
-                        chap_title = h_tag.get_text().strip()
-                    elif soup.title and soup.title.get_text().strip() and "EPUB" not in soup.title.get_text():
-                        chap_title = soup.title.get_text().strip()
-                    else:
-                        chap_title = f"第 {idx:02d} 节"
-                        
-                    if len(chap_title) > 80:
-                        chap_title = chap_title[:80]
-                        
-                    paragraphs = []
-                    for p in soup.find_all(['p', 'pre', 'code', 'blockquote', 'li', 'h4', 'h5']):
-                        txt = p.get_text().strip()
-                        if txt and len(txt) > 5:
-                            paragraphs.append(txt)
-                            
-                    full_text = "\n\n".join(paragraphs)
-                    if len(full_text) > 150:  # 过滤目录与空白页
-                        chapters.append({
-                            "title": chap_title,
-                            "content": full_text
-                        })
-                except Exception as e:
-                    pass
-    except Exception as e:
-        logger.error(f"解析 EPUB 失败: {e}")
-        
-    return chapters
-
-
-async def process_book_pipeline(book_info: Dict[str, Any]):
+async def process_book_pipeline(book_info: Dict[str, Any]) -> bool:
     """单本书的全自动切块、BGE-M3向量化、20%精讲提炼与双轨同步流水线"""
     filename = book_info["filename"]
     book_id = clean_book_id(filename)
@@ -166,7 +124,7 @@ async def process_book_pipeline(book_info: Dict[str, Any]):
     
     if await is_book_already_processed(book_id):
         logger.info(f"⏭️ 书籍 《{filename}》 已完整处理，跳过。")
-        return
+        return False
         
     t_start = time.time()
     logger.info(f"\n=======================================================")
@@ -182,16 +140,33 @@ async def process_book_pipeline(book_info: Dict[str, Any]):
             res = subprocess.run(dl_cmd, capture_output=True, text=True)
             if res.returncode != 0:
                 logger.error(f"下载失败: {res.stderr}")
-                return
+                return False
             
-        # 2. 提取章节
+        # 2. 提取章节 (全面支持 EPUB 与 PDF 格式)
         chapters = []
-        if local_file.suffix.lower() == ".epub":
+        ext = local_file.suffix.lower()
+        if ext == ".epub":
             chapters = extract_epub_text_and_chapters(local_file)
+        elif ext == ".pdf":
+            chapters = extract_pdf_chapters(local_file)
+        elif ext in [".txt", ".md"]:
+            txt = local_file.read_text(encoding="utf-8", errors="ignore")
+            step = 15000
+            for idx, i in enumerate(range(0, len(txt), step), 1):
+                chunk = txt[i : i + step]
+                if len(chunk) > 100:
+                    chapters.append({"title": f"第 {idx:02d} 节", "content": chunk})
             
         if not chapters:
-            logger.warning(f"未能提取到有效章节结构，跳过: {filename}")
-            return
+            logger.warning(f"未能提取到有效章节结构，记录跳过标记: {filename}")
+            skip_sql = """
+            INSERT INTO library_books (
+                id, title, format, total_chars, total_chunks, summary_path, summary_chars, category, tags_json, original_file_path
+            ) VALUES (?, ?, ?, 0, 0, '', 1, '未分类/格式异常', '[]', ?)
+            ON CONFLICT(id) DO NOTHING;
+            """
+            await execute_turso(skip_sql, [book_id, filename, book_info["format"], book_info["remote_path"]])
+            return False
             
         total_chars = sum(len(c["content"]) for c in chapters)
         logger.info(f"📖 [2/5] 解析成功: 提取到 {len(chapters)} 个章节，总字数: {total_chars:,} 字")
@@ -252,7 +227,7 @@ async def process_book_pipeline(book_info: Dict[str, Any]):
                 })
             
             import httpx
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
                 await client.post(
                     f"{TURSO_URL}/v2/pipeline",
                     headers={"Authorization": f"Bearer {TURSO_TOKEN}", "Content-Type": "application/json"},
@@ -261,7 +236,7 @@ async def process_book_pipeline(book_info: Dict[str, Any]):
             await asyncio.sleep(0.1)
 
         # 4. 20% 极客干货深度重构
-        logger.info(f"🧠 [4/5] 启动章节级 20% 去水提炼 (硅基流动 DeepSeek-V3 旗舰 · 原生永久 0 元)...")
+        logger.info(f"🧠 [4/5] 启动章节级 20% 去水提炼 (火山 DeepSeek-V4-Pro / Flash / 百炼 0 成本动态轮巡池)...")
         core_chaps = sorted(chapters, key=lambda x: len(x["content"]), reverse=True)[:15]
         sem = asyncio.Semaphore(3)
         distill_tasks = []
@@ -304,35 +279,40 @@ async def process_book_pipeline(book_info: Dict[str, Any]):
         
         t_duration = time.time() - t_start
         logger.info(f"🎉 《{filename}》 处理圆满完成！耗时: {t_duration:.1f}s | 消耗 Tokens: {total_tokens:,} | 讲义: {len(distilled_text):,} 字")
+        return True
         
     except Exception as err:
         logger.error(f"❌ 处理书籍 《{filename}》 异常: {err}", exc_info=True)
+        return False
     finally:
         if local_file.exists():
             local_file.unlink()
 
 
-async def run_worker_loop(max_books: int = 5):
+async def run_worker_loop(max_books: int = 1000):
     """主调度循环"""
     logger.info("🚀 启动第二大脑·AI 图书馆 N100 边缘常驻处理引擎...")
     catalog = get_gdrive_ebook_catalog()
-    logger.info(f"📋 成功加载待处理队列: 共 {len(catalog)} 本图书 (本次计划批处理前 {max_books} 本)")
+    logger.info(f"📋 成功加载待处理队列: 共 {len(catalog)} 本图书 (本次计划批处理前 {max_books} 本新专著)")
     
-    count = 0
+    processed_count = 0
     for book in catalog:
-        if count >= max_books:
+        if processed_count >= max_books:
             break
-        await process_book_pipeline(book)
-        count += 1
-        await asyncio.sleep(2)
+        did_process = await process_book_pipeline(book)
+        if did_process:
+            processed_count += 1
+            await asyncio.sleep(2)
+        else:
+            await asyncio.sleep(0.05)
         
-    logger.info(f"🏁 批处理任务阶段性圆满结束！共处理 {count} 本专著。")
+    logger.info(f"🏁 批处理任务阶段性圆满结束！本次共深度解析入库 {processed_count} 本新专著。")
 
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--max", type=int, default=3, help="本次连续处理书籍数")
+    parser.add_argument("--max", type=int, default=1000, help="本次连续处理新书籍数")
     args = parser.parse_args()
     
     asyncio.run(run_worker_loop(max_books=args.max))

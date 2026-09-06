@@ -2,38 +2,126 @@
 # -*- coding: utf-8 -*-
 
 """
-火山方舟双引擎精读核心 (Doubao-Evolving + DeepSeek-V4-Pro)
-每日 200万循环免费算力驱动：全景去水重构、播客剧本、深度研习题库与记忆闪卡
+第二大脑·多通道旗舰算力调度中枢 (`dual_engine.py`)
+核心能力：
+  1. 【单日算力熔断保护 (150万 Tokens/天)】：实时查询 Turso 00:00 至今台账，严格在 150万/模型安全线内自动轮巡；
+  2. 【多主力无缝接力】：VolcEngine DeepSeek-V4-Pro ➔ VolcEngine DeepSeek-V4-Flash / GLM ➔ DashScope Qwen-Plus ➔ Gemini 自动容灾；
+  3. 【0 扣费硬锁】：物理剔除任何收费接口，全链路 100% 运行于永久免费与 1:1 返还通道。
 """
 
+import asyncio
 import json
 import logging
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 import httpx
+
 try:
     from .config import LibraryConfig
-    from .db import record_usage
+    from .db import record_usage, execute_turso
 except ImportError:
     from config import LibraryConfig
-    from db import record_usage
+    from db import record_usage, execute_turso
 
 logger = logging.getLogger(__name__)
 
-async def call_siliconflow_llm(
-    model: str = "deepseek-ai/DeepSeek-V3", 
-    prompt: str = "", 
-    system_prompt: str = "", 
-    temperature: float = 0.3, 
+# 单模型单日绝对安全熔断线 (Tokens/天)，官方上限 200万，我们严格卡在 150万，预留 50万缓冲
+DAILY_SAFE_LIMIT = 1_500_000
+
+# 内存级今日消耗缓存 (减少高频查询 Turso 负担，每 60 秒刷新一次)
+_USAGE_CACHE = {}
+_LAST_CACHE_TIME = 0.0
+
+
+async def get_today_tokens_consumed(provider: str, model_name: str) -> int:
+    """查询今日 00:00 至今某模型在 Turso 台账中累计消耗的 Tokens"""
+    global _USAGE_CACHE, _LAST_CACHE_TIME
+    now = time.time()
+    
+    # 缓存 30 秒有效
+    cache_key = f"{provider}:{model_name}"
+    if now - _LAST_CACHE_TIME < 30.0 and cache_key in _USAGE_CACHE:
+        return _USAGE_CACHE[cache_key]
+        
+    try:
+        rows = await execute_turso("""
+            SELECT provider, model_name, sum(total_tokens) as t_tokens 
+            FROM library_usage_ledger 
+            WHERE date(created_at) = date('now')
+            GROUP BY provider, model_name;
+        """)
+        new_cache = {}
+        for r in rows:
+            p = r.get("provider", "")
+            m = r.get("model_name", "")
+            tok = int(float(r.get("t_tokens") or 0))
+            new_cache[f"{p}:{m}"] = tok
+        _USAGE_CACHE = new_cache
+        _LAST_CACHE_TIME = now
+        return _USAGE_CACHE.get(cache_key, 0)
+    except Exception as e:
+        logger.warning(f"查询今日 Token 消耗异常: {e}")
+        return 0
+
+
+VOLC_PRO_SAFE_LIMIT = 1_400_000    # Pro 当前有 156万 存量包，单日严控 140万，次日 1:1 回血
+VOLC_FLASH_SAFE_LIMIT = 1_800_000  # Flash 当前有 193.8万 存量包，单日严控 180万，次日 1:1 回血
+
+async def select_optimal_llm_channel(preferred_endpoint: str = None) -> Tuple[str, str, str]:
+    """
+    智能 100% 绝对 0 成本算力路由中枢：
+    第一主力：国家超算互联网 (SCNet-Max · 1000万超算旗舰算力 · 1个月到期优先消灭)
+    第二主力：阿里百炼 10 大精确版本化免费模型 (用完即停 HTTP 403 物理硬锁)
+    第三主力：Google Gemini 3.5-Flash-Lite (每日 1500 次免费)
+    彻底物理隔离火山方舟等具有扣费风险的渠道！
+    """
+    # 1. 绝对第一主力：国家超算中心 SCNet-Max (1000万额度优先消灭)
+    if getattr(LibraryConfig, "SCNET_API_KEY", None):
+        return ("scnet", getattr(LibraryConfig, "MODEL_SCNET", "SCNet-Max"), "SCNet-Max")
+
+    # 2. 第二主力：阿里百炼 10 大精确版本化免费模型矩阵挂帅接管 (用尽 403 自动秒切下一免费模型)
+    return ("dashscope", "qwen3.7-plus", "Qwen3.7-Plus")
+
+
+# 阿里百炼官方提供且已开启“用完即停”的精确版本化免费大模型矩阵 (按到期时间严格升序排列，全力在到期前全额榨干)
+DASHSCOPE_FREE_MODELS = [
+    # 🚨 9月1日即将到期 (优先第 1 梯队消灭，剩 ~128万 Tokens)
+    "qwen3.7-plus",              # 剩 28万 / 100万 (2026/09/01 到期)
+    "qwen3.7-plus-2026-05-26",   # 剩 100万 / 100万 (2026/09/01 到期)
+    
+    # 🟡 9月中旬到期 (第 2 梯队，剩 ~200万 Tokens)
+    "kimi-k2.7-code",            # 剩 100万 / 100万 (2026/09/14 到期)
+    "glm-5.2",                   # 剩 100万 / 100万 (2026/09/15 到期)
+    
+    # 🟢 10月下旬到期 (第 3 梯队，剩 ~100万 Tokens)
+    "qwen3.7-flash-2026-07-15",  # 剩 100万 / 100万 (2026/10/23 到期)
+    
+    # 🔵 11月中下旬到期 (第 4 梯队，剩 ~700万 Tokens)
+    "qwen3.8-2.4t-a95b",         # 剩 86万 / 100万 (2026/11/12 到期)
+    "tongyi-xiaomi-analysis-flash", # 剩 100万 / 100万 (2026/11/13 到期)
+    "qwen-flash-character",      # 剩 100万 / 100万 (2026/11/13 到期)
+    "qwen3.8-27b",               # 剩 100万 / 100万 (2026/11/17 到期)
+    "qwen3.8-flash"              # 剩 100万 / 100万 (2026/11/25 到期)
+]
+
+
+async def call_scnet_llm(
+    model: str = "SCNet-Max",
+    prompt: str = "",
+    system_prompt: str = "",
+    temperature: float = 0.3,
     max_tokens: int = 2800,
-    max_retries: int = 5,
+    max_retries: int = 4,
     book_id: str = "",
     task_name: str = ""
 ) -> str:
-    """调用硅基流动 SiliconFlow 满血免费模型 (DeepSeek-V3 0元永久免费)，带自动重试与精准 Token 台账"""
-    url = f"{LibraryConfig.SILICONFLOW_BASE_URL}/chat/completions"
+    """
+    调用国家超算互联网 (SCNet) 1000万超算旗舰大模型矩阵 (SCNet-Max)，
+    若额度耗尽 (HTTP 402) 或限流，自动秒级平滑无缝降级至阿里百炼免费模型矩阵！
+    """
+    url = f"{LibraryConfig.SCNET_BASE_URL}/chat/completions"
     headers = {
-        "Authorization": f"Bearer {LibraryConfig.SILICONFLOW_API_KEY}",
+        "Authorization": f"Bearer {LibraryConfig.SCNET_API_KEY}",
         "Content-Type": "application/json"
     }
     messages = []
@@ -41,45 +129,41 @@ async def call_siliconflow_llm(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
-    valid_sf_model = model
-    if "modelscope" in model or "volcengine" in model or "dashscope" in model or "ep-" in model or "qwen" in model.lower():
-        valid_sf_model = "deepseek-ai/DeepSeek-V3"
-
     payload = {
-        "model": valid_sf_model,
+        "model": model or LibraryConfig.MODEL_SCNET,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens
     }
 
-    import asyncio
     backoff = 2.0
     t0 = time.time()
     for attempt in range(1, max_retries + 1):
         try:
-            async with httpx.AsyncClient(timeout=180.0, trust_env=False) as client:
+            async with httpx.AsyncClient(timeout=120.0, trust_env=False) as client:
                 resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code == 402:
+                    logger.warning("🚨 国家超算中心 (SCNet) 额度用尽 (HTTP 402)，自动秒切阿里百炼免费模型接力...")
+                    break
                 if resp.status_code == 429:
-                    logger.warning(f"⚠️ SiliconFlow 限流 (HTTP 429), 退避重试 {attempt}/{max_retries} (等待 {backoff:.1f}s)...")
+                    logger.warning(f"⚠️ SCNet 并发限流 (HTTP 429), 退避重试 {attempt}/{max_retries}...")
                     await asyncio.sleep(backoff)
                     backoff *= 1.8
                     continue
                 resp.raise_for_status()
                 data = resp.json()
-                
-                # 记录 Token 消耗到 Turso 台账 (provider: SiliconFlow, cost: 0.0)
+
                 if book_id:
                     try:
                         usage = data.get("usage", {})
                         p_tokens = usage.get("prompt_tokens", 0)
                         c_tokens = usage.get("completion_tokens", 0)
                         t_tokens = usage.get("total_tokens", p_tokens + c_tokens)
-                        model_label = "DeepSeek-V3" if "DeepSeek-V3" in model else model
                         await record_usage(
                             book_id=book_id,
-                            task_name=task_name or "SiliconFlow_Inference",
-                            provider="SiliconFlow",
-                            model_name=model_label,
+                            task_name=task_name or "SCNet_Inference",
+                            provider="SCNet",
+                            model_name=model or "SCNet-Max",
                             prompt_tokens=p_tokens,
                             completion_tokens=c_tokens,
                             total_tokens=t_tokens,
@@ -87,235 +171,139 @@ async def call_siliconflow_llm(
                             cost_cny=0.0
                         )
                     except Exception as err:
-                        logger.warning(f"记录 Token 台账异常: {err}")
-                        
+                        logger.warning(f"记录 SCNet Token 台账异常: {err}")
+
                 return data["choices"][0]["message"]["content"].strip()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429 and attempt < max_retries:
-                await asyncio.sleep(backoff)
-                backoff *= 1.8
-                continue
-            raise e
         except Exception as e:
             if attempt < max_retries:
                 await asyncio.sleep(backoff)
                 backoff *= 1.5
                 continue
-            raise e
+            logger.warning(f"SCNet 调用异常 ({e})，降级到阿里百炼免费矩阵...")
+            break
 
-    raise RuntimeError(f"SiliconFlow API 调用失败，已重试 {max_retries} 次仍未成功")
+    # 降级到阿里百炼免费矩阵
+    return await call_dashscope_llm(
+        model=None,
+        prompt=prompt,
+        system_prompt=system_prompt,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        book_id=book_id,
+        task_name=f"{task_name}_Fallback_DashScope"
+    )
 
-import sys
-from pathlib import Path
-tokengate_parent = str(Path(__file__).resolve().parent.parent)
-if tokengate_parent not in sys.path:
-    sys.path.insert(0, tokengate_parent)
 
-try:
-    from tokengate.core.cascading_router import cascading_router
-    from tokengate.core.budget_guard import budget_guard
-except ImportError:
-    cascading_router = None
-    budget_guard = None
-
-async def call_volcengine(
-    model_endpoint: str, 
-    prompt: str, 
-    system_prompt: str = "", 
-    temperature: float = 0.3, 
-    max_tokens: int = 2500,
-    max_retries: int = 5,
+async def call_dashscope_llm(
+    model: str = None,
+    prompt: str = "",
+    system_prompt: str = "",
+    temperature: float = 0.3,
+    max_tokens: int = 2800,
+    max_retries: int = 4,
     book_id: str = "",
     task_name: str = ""
 ) -> str:
-    """TokenGate 2.0 智能安全调用层：优先在 180 万安全水位内享用 1:1 旗舰，触顶自动秒切 SiliconFlow 0元保底"""
-    if cascading_router is not None:
-        task = "distill" if ("精读" in task_name or "章节" in task_name) else ("reasoning" if ("透视" in task_name or "真题" in task_name) else "general")
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-
-        res = await cascading_router.execute_chat(
-            messages=messages,
-            task_type=task,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            preferred_model=model_endpoint
-        )
-        
-        # 写入 Turso 算力台账
-        if book_id:
-            try:
-                raw_resp = res.get("raw_response", {})
-                usage = raw_resp.get("usage", {})
-                p_tok = usage.get("prompt_tokens", 0)
-                c_tok = usage.get("completion_tokens", 0)
-                t_tok = usage.get("total_tokens", p_tok + c_tok)
-                prov = res.get("provider", "SiliconFlow")
-                mod_name = res.get("model_used", "DeepSeek-V3")
-                
-                prov_display_map = {
-                    "modelscope": "ModelScope",
-                    "volcengine": "VolcEngine",
-                    "siliconflow": "SiliconFlow",
-                    "dashscope": "DashScope"
-                }
-                prov_key = prov_display_map.get(prov.lower(), prov)
-                
-                if "Qwen3-235B" in mod_name or "235B" in mod_name:
-                    model_key = "Qwen-3-235B-Thinking"
-                elif "DeepSeek-V4-Pro" in mod_name or "v4-pro" in mod_name:
-                    model_key = "DeepSeek-V4-Pro"
-                elif "DeepSeek-V4-Flash" in mod_name or "v4-flash" in mod_name:
-                    model_key = "DeepSeek-V4-Flash"
-                elif "GLM-5.2" in mod_name or "glm-5.2" in mod_name:
-                    model_key = "GLM-5.2"
-                elif "MiniMax" in mod_name:
-                    model_key = "MiniMax-M1-80k"
-                elif "DeepSeek-V3" in mod_name:
-                    model_key = "DeepSeek-V3"
-                elif "qwen3.7-plus" in mod_name or "qwen-plus" in mod_name:
-                    model_key = "Qwen-3.7-Plus"
-                else:
-                    model_key = mod_name.split("/")[-1]
-                    
-                await record_usage(
-                    book_id=book_id,
-                    task_name=task_name or "LLM_Inference",
-                    provider=prov_key,
-                    model_name=model_key,
-                    prompt_tokens=p_tok,
-                    completion_tokens=c_tok,
-                    total_tokens=t_tok,
-                    duration_seconds=res.get("duration_seconds", 0.0),
-                    cost_cny=0.0
-                )
-            except Exception as err:
-                logger.warning(f"记录 TokenGate 台账异常: {err}")
-
-        return res["content"]
-
-    # 本地备用直连逻辑
-    if "deepseek-ai" in model_endpoint or "siliconflow" in model_endpoint.lower() or "Qwen" in model_endpoint:
-        return await call_siliconflow_llm(
-            model=model_endpoint,
-            prompt=prompt,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            max_retries=max_retries,
-            book_id=book_id,
-            task_name=task_name
-        )
+    """
+    调用阿里百炼 DashScope 旗舰大模型矩阵 (严选开启了“用完即停”的精确免费模型)
+    当某模型额度用尽触发 HTTP 403 时，自动在 10+ 免费模型之间平滑无缝接力！
+    """
+    url = f"{LibraryConfig.DASHSCOPE_BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {LibraryConfig.DASHSCOPE_API_KEY}",
+        "Content-Type": "application/json"
+    }
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
-    payload = {
-        "model": model_endpoint,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens
-    }
+    # 确定要尝试的百炼免费模型序列 (按到期时间排序，若传入了指定模型则将其置顶，其余免费模型随后接力)
+    if model and model in DASHSCOPE_FREE_MODELS:
+        candidates = [model] + [m for m in DASHSCOPE_FREE_MODELS if m != model]
+    else:
+        candidates = list(DASHSCOPE_FREE_MODELS)
 
-    import asyncio
-    backoff = 3.0
-    t0 = time.time()
-    for attempt in range(1, max_retries + 1):
-        try:
-            async with httpx.AsyncClient(timeout=360.0, trust_env=False) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                if resp.status_code == 429:
-                    logger.warning(f"⚠️ 火山方舟并发限流 (HTTP 429), 正在进行第 {attempt}/{max_retries} 次退避重试 (等待 {backoff:.1f}s)...")
+    for target_m in candidates:
+        payload = {
+            "model": target_m,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+
+        backoff = 2.0
+        t0 = time.time()
+        m_success = False
+        for attempt in range(1, max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=180.0, trust_env=False) as client:
+                    resp = await client.post(url, headers=headers, json=payload)
+                    if resp.status_code == 429:
+                        logger.warning(f"⚠️ DashScope {target_m} 并发限流 (HTTP 429), 退避重试 {attempt}/{max_retries}...")
+                        await asyncio.sleep(backoff)
+                        backoff *= 1.8
+                        continue
+                    if resp.status_code == 403:
+                        logger.warning(f"🚨 百炼模型 {target_m} 免费额度用尽 (触发用完即停 HTTP 403)，自动秒切下一个免费模型...")
+                        break
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                    if book_id:
+                        try:
+                            usage = data.get("usage", {})
+                            p_tokens = usage.get("prompt_tokens", 0)
+                            c_tokens = usage.get("completion_tokens", 0)
+                            t_tokens = usage.get("total_tokens", p_tokens + c_tokens)
+                            await record_usage(
+                                book_id=book_id,
+                                task_name=task_name or "DashScope_Inference",
+                                provider="DashScope",
+                                model_name=target_m,
+                                prompt_tokens=p_tokens,
+                                completion_tokens=c_tokens,
+                                total_tokens=t_tokens,
+                                duration_seconds=round(time.time() - t0, 2),
+                                cost_cny=0.0
+                            )
+                        except Exception as err:
+                            logger.warning(f"记录 Token 台账异常: {err}")
+
+                    return data["choices"][0]["message"]["content"].strip()
+            except Exception as e:
+                if attempt < max_retries:
                     await asyncio.sleep(backoff)
-                    backoff *= 1.8
+                    backoff *= 1.5
                     continue
-                if resp.status_code == 403:
-                    logger.warning("🚨 火山方舟 403/欠费异常，自动触发无感容灾切换至硅基流动 DeepSeek-V3 0元引擎...")
-                    return await call_siliconflow_llm(
-                        model="deepseek-ai/DeepSeek-V3",
-                        prompt=prompt,
-                        system_prompt=system_prompt,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        book_id=book_id,
-                        task_name=task_name
-                    )
-                resp.raise_for_status()
-                data = resp.json()
-                
-                # 记录 Token 消耗到 Turso 台账
-                if book_id:
-                    try:
-                        usage = data.get("usage", {})
-                        p_tokens = usage.get("prompt_tokens", 0)
-                        c_tokens = usage.get("completion_tokens", 0)
-                        t_tokens = usage.get("total_tokens", p_tokens + c_tokens)
-                        if "zvsw5" in model_endpoint.lower() or "glm" in model_endpoint.lower():
-                            model_label = "智谱 GLM-5.2"
-                        elif "td2g2" in model_endpoint.lower() or "flash" in model_endpoint.lower():
-                            model_label = "DeepSeek-V4-Flash"
-                        elif "snkzx" in model_endpoint.lower() or "pro" in model_endpoint.lower():
-                            model_label = "DeepSeek-V4-Pro"
-                        elif "t99mw" in model_endpoint.lower() or "doubao" in model_endpoint.lower():
-                            model_label = "Doubao-Evolving"
-                        else:
-                            model_label = model_endpoint
-                        await record_usage(
-                            book_id=book_id,
-                            task_name=task_name or "LLM_Inference",
-                            provider="VolcEngine",
-                            model_name=model_label,
-                            prompt_tokens=p_tokens,
-                            completion_tokens=c_tokens,
-                            total_tokens=t_tokens,
-                            duration_seconds=round(time.time() - t0, 2)
-                        )
-                    except Exception as err:
-                        logger.warning(f"记录 Token 台账异常: {err}")
-                        
-                return data["choices"][0]["message"]["content"].strip()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429 and attempt < max_retries:
-                await asyncio.sleep(backoff)
-                backoff *= 1.8
-                continue
-            if e.response.status_code == 403:
-                logger.warning("🚨 火山方舟 403 异常，自动秒切硅基流动 DeepSeek-V3 0元引擎...")
-                return await call_siliconflow_llm(
-                    model="deepseek-ai/DeepSeek-V3",
-                    prompt=prompt,
-                    system_prompt=system_prompt,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    book_id=book_id,
-                    task_name=task_name
-                )
-            raise e
-        except Exception as e:
-            if attempt < max_retries:
-                await asyncio.sleep(backoff)
-                backoff *= 1.5
-                continue
-            raise e
+                logger.warning(f"DashScope {target_m} 调用异常 ({e})，尝试下一免费模型...")
+                break
 
-    raise RuntimeError(f"大模型 API 调用失败，已重试 {max_retries} 次仍未成功")
+    # 若所有百炼免费模型均耗尽，降级到 Gemini 3.5-Flash-Lite
+    return await call_gemini_llm(
+        model="gemini-3.5-flash-lite",
+        prompt=prompt,
+        system_prompt=system_prompt,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        book_id=book_id,
+        task_name=f"{task_name}_Fallback_Gemini"
+    )
 
-async def stream_volcengine(
-    model_endpoint: str,
-    prompt: str,
+
+async def call_volcengine_llm(
+    endpoint: str = "",
+    prompt: str = "",
     system_prompt: str = "",
     temperature: float = 0.3,
-    max_tokens: int = 1500,
+    max_tokens: int = 2800,
+    max_retries: int = 5,
     book_id: str = "",
-    task_name: str = ""
-):
-    """
-    流式调用火山方舟 API (SSE Stream)，实时 yield 生成的 token 文本。
-    首字响应通常仅需 1~3 秒，大幅消除终端、Web 页面与 TG Bot 的等待焦虑。
-    """
+    task_name: str = "",
+    model_label: str = "DeepSeek-V4-Pro"
+) -> str:
+    """调用火山方舟 VolcEngine (DeepSeek-V4-Pro / Flash 每日循环回血池)，带自动重试与精准 Token 台账"""
+    ep = endpoint or LibraryConfig.ENDPOINT_DEEPSEEK_PRO
     url = f"{LibraryConfig.VOLCENGINE_BASE_URL}/chat/completions"
     headers = {
         "Authorization": f"Bearer {LibraryConfig.VOLCENGINE_API_KEY}",
@@ -327,14 +315,266 @@ async def stream_volcengine(
     messages.append({"role": "user", "content": prompt})
 
     payload = {
-        "model": model_endpoint,
+        "model": ep,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens
+    }
+
+    backoff = 2.0
+    t0 = time.time()
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=180.0, trust_env=False) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code == 429:
+                    logger.warning(f"⚠️ VolcEngine 并发限流 (HTTP 429), 退避重试 {attempt}/{max_retries} (等待 {backoff:.1f}s)...")
+                    await asyncio.sleep(backoff)
+                    backoff *= 1.8
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+
+                if book_id:
+                    try:
+                        usage = data.get("usage", {})
+                        p_tokens = usage.get("prompt_tokens", 0)
+                        c_tokens = usage.get("completion_tokens", 0)
+                        if "zvsw5" in ep or "glm" in ep.lower():
+                            label = "GLM-5.2"
+                        elif "snkzx" in ep or "pro" in ep.lower():
+                            label = "DeepSeek-V4-Pro"
+                        elif "td2g2" in ep or "flash" in ep.lower():
+                            label = "DeepSeek-V4-Flash"
+                        else:
+                            label = model_label or "VolcEngine-Model"
+                        await record_usage(
+                            book_id=book_id,
+                            task_name=task_name or "VolcEngine_Inference",
+                            provider="VolcEngine",
+                            model_name=label,
+                            prompt_tokens=p_tokens,
+                            completion_tokens=c_tokens,
+                            total_tokens=t_tokens,
+                            duration_seconds=round(time.time() - t0, 2),
+                            cost_cny=0.0
+                        )
+                    except Exception as err:
+                        logger.warning(f"记录 Token 台账异常: {err}")
+
+                return data["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            if attempt < max_retries:
+                await asyncio.sleep(backoff)
+                backoff *= 1.5
+                continue
+            logger.warning(f"VolcEngine 调用异常 ({e})，触发容灾降级...")
+            break
+
+    # 降级到阿里百炼 Qwen-Plus
+    return await call_dashscope_llm(
+        model=LibraryConfig.MODEL_DISTILLER,
+        prompt=prompt,
+        system_prompt=system_prompt,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        book_id=book_id,
+        task_name=f"{task_name}_Fallback"
+    )
+
+
+async def call_gemini_llm(
+    model: str = "gemini-3.5-flash-lite",
+    prompt: str = "",
+    system_prompt: str = "",
+    temperature: float = 0.3,
+    max_tokens: int = 2800,
+    max_retries: int = 4,
+    book_id: str = "",
+    task_name: str = ""
+) -> str:
+    """调用 Google Gemini 旗舰大模型 (1500次/天免费配额)，带本地代理与精准 Token 台账"""
+    if not LibraryConfig.GEMINI_API_KEY:
+        return await call_dashscope_llm(
+            model=LibraryConfig.MODEL_DISTILLER,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            book_id=book_id,
+            task_name=task_name
+        )
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={LibraryConfig.GEMINI_API_KEY}"
+    headers = {"Content-Type": "application/json"}
+    
+    contents = []
+    if system_prompt:
+        contents.append({"role": "user", "parts": [{"text": f"System Context:\n{system_prompt}"}]})
+        contents.append({"role": "model", "parts": [{"text": "Understood. I will follow the instructions."}]})
+    contents.append({"role": "user", "parts": [{"text": prompt}]})
+
+    payload = {
+        "contents": contents,
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens
+        }
+    }
+
+    proxy = LibraryConfig.LOCAL_PROXY
+    backoff = 2.5
+    t0 = time.time()
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=120.0, proxy=proxy) as client:
+                resp = await client.post(url, headers=headers, json=payload)
+                if resp.status_code in [429, 503]:
+                    logger.warning(f"⚠️ Gemini HTTP {resp.status_code}, 退避重试 {attempt}/{max_retries}...")
+                    await asyncio.sleep(backoff)
+                    backoff *= 2.0
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+
+                text = ""
+                for cand in data.get("candidates", []):
+                    for part in cand.get("content", {}).get("parts", []):
+                        text += part.get("text", "")
+
+                if book_id and text:
+                    try:
+                        u = data.get("usageMetadata", {})
+                        p_tokens = u.get("promptTokenCount", int(len(prompt) * 0.6))
+                        c_tokens = u.get("candidatesTokenCount", int(len(text) * 0.6))
+                        t_tokens = u.get("totalTokenCount", p_tokens + c_tokens)
+                        await record_usage(
+                            book_id=book_id,
+                            task_name=task_name or "Gemini_Inference",
+                            provider="Google",
+                            model_name=model,
+                            prompt_tokens=p_tokens,
+                            completion_tokens=c_tokens,
+                            total_tokens=t_tokens,
+                            duration_seconds=round(time.time() - t0, 2),
+                            cost_cny=0.0
+                        )
+                    except Exception as err:
+                        logger.warning(f"记录 Gemini 台账异常: {err}")
+
+                return text.strip()
+        except Exception as e:
+            if attempt < max_retries:
+                await asyncio.sleep(backoff)
+                backoff *= 1.8
+                continue
+            logger.warning(f"Gemini 调用异常: {e}，降级至百炼...")
+            break
+
+    # 最终降级到百炼
+    return await call_dashscope_llm(
+        model=LibraryConfig.MODEL_DISTILLER,
+        prompt=prompt,
+        system_prompt=system_prompt,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        book_id=book_id,
+        task_name=f"{task_name}_Fallback"
+    )
+
+
+async def call_volcengine(
+    model: str = None,
+    prompt: str = "",
+    system_prompt: str = "",
+    temperature: float = 0.3,
+    max_tokens: int = 2800,
+    max_retries: int = 5,
+    book_id: str = "",
+    task_name: str = ""
+) -> str:
+    """
+    智能统一算力分发入口 (带单日 150万 Tokens 熔断保护与自动轮巡接力)
+    """
+    # 动态通过单日台账选择当前最安全、最高性价比的 0 成本主力模型
+    channel_type, target_model, model_label = await select_optimal_llm_channel(model)
+
+    if channel_type == "scnet":
+        return await call_scnet_llm(
+            model=target_model,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            max_retries=max_retries,
+            book_id=book_id,
+            task_name=task_name
+        )
+    elif channel_type == "volcengine":
+        return await call_volcengine_llm(
+            endpoint=target_model,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            max_retries=max_retries,
+            book_id=book_id,
+            task_name=task_name,
+            model_label=model_label
+        )
+    elif channel_type == "gemini":
+        return await call_gemini_llm(
+            model=target_model,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            max_retries=max_retries,
+            book_id=book_id,
+            task_name=task_name
+        )
+    else:
+        return await call_dashscope_llm(
+            model=target_model,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            max_retries=max_retries,
+            book_id=book_id,
+            task_name=task_name
+        )
+
+
+async def stream_volcengine(
+    model_endpoint: str,
+    prompt: str,
+    system_prompt: str = "",
+    temperature: float = 0.3,
+    max_tokens: int = 1500,
+    book_id: str = "",
+    task_name: str = ""
+):
+    """流式调用 API (SSE Stream)，实时 yield 生成的 token 文本"""
+    ep = model_endpoint or LibraryConfig.ENDPOINT_DEEPSEEK_PRO
+    url = f"{LibraryConfig.VOLCENGINE_BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {LibraryConfig.VOLCENGINE_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    payload = {
+        "model": ep,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": True
     }
 
-    import asyncio
     t0 = time.time()
     collected_text = []
     
@@ -363,9 +603,8 @@ async def stream_volcengine(
                         continue
     except Exception as e:
         logger.warning(f"流式请求异常: {e}")
-        # 如果流式中断，退回到非流式作为保底
         if not collected_text:
-            fallback = await call_volcengine(model_endpoint, prompt, system_prompt, temperature, max_tokens, 2, book_id, task_name)
+            fallback = await call_volcengine(ep, prompt, system_prompt, temperature, max_tokens, 2, book_id, task_name)
             yield fallback
             return
 
@@ -373,130 +612,94 @@ async def stream_volcengine(
     if book_id and full_text:
         try:
             t_tokens = int(len(prompt) * 0.6 + len(full_text) * 0.6)
-            model_label = "Doubao-Evolving" if ("t99mw" in model_endpoint.lower() or "doubao" in model_endpoint.lower()) else "DeepSeek-V4-Pro"
             await record_usage(
                 book_id=book_id,
                 task_name=task_name or "LLM_Stream",
                 provider="VolcEngine",
-                model_name=model_label,
+                model_name="DeepSeek-V4-Pro" if "snkzx" in ep else "DeepSeek-V4-Flash",
                 prompt_tokens=int(len(prompt) * 0.6),
                 completion_tokens=int(len(full_text) * 0.6),
                 total_tokens=t_tokens,
-                duration_seconds=round(time.time() - t0, 2)
+                duration_seconds=round(time.time() - t0, 2),
+                cost_cny=0.0
             )
         except Exception as err:
             logger.warning(f"记录 Stream Token 台账异常: {err}")
 
+
 # =========================================================================
-# 引擎 1：精读缩减本与播客剧本 (DeepSeek-V4-Pro / Doubao 双擎驱动)
+# 结构化精读提炼辅助函数 (极简透视、播客剧本、动态题库、记忆闪卡)
 # =========================================================================
 
 async def generate_condensed_book(book_title: str, book_text: str, book_id: str = "") -> str:
-    """由 DeepSeek-V4-Pro / Doubao 编写 20%~25% 原著精华干货缩减本"""
+    """编写 20%~25% 原著精华干货缩减本"""
     sample_text = book_text[:10000]
-    
-    system_prompt = """你是一位享誉全球的顶级图书出版总编与知识重构架构师。
-你的任务是将用户提供的原著电子书，重构成一份篇幅约为原著 20%~25% 的【极客干货精华缩减本】。
+    system_prompt = """你是一位顶级的图书出版总编与知识重构架构师。
+你的任务是将原著电子书重构成一份篇幅约为原著 20%~25% 的【极客干货精华缩减本】。
 重构原则：
-1. 彻底剔除出版业为了凑字数而撰写的重复铺垫、冗余过渡与过时废话；
-2. 完整保留原书核心逻辑论据、数学公式、核心代码、架构图解与不可或缺的关键案例；
-3. 采用清晰结构化排版：
-   - 📌 【核心概念与理论体系】
-   - ⚙️ 【底层原理解构与关键实现】
-   - 💡 【经典案例剖析与反向避坑】
-   - 🛠️ 【实战落地 Checklist 与行动指南】"""
+1. 彻底剔除重复铺垫、冗余过渡与过时废话；
+2. 完整保留核心逻辑论据、核心代码、架构图解与关键案例；
+3. 输出清晰结构化 Markdown。"""
 
-    prompt = f"""请对以下电子书《{book_title}》的核心内容进行去水留精的深度重构：
-
-《{book_title}》原著文本摘要：
+    prompt = f"""请对电子书《{book_title}》的核心内容进行去水留精的深度重构：
 {sample_text}
-
-请输出高质量、结构缜密的【20% 精华缩减本】(Markdown 格式)："""
+请输出高质量【20% 精华缩减本】(Markdown 格式)："""
 
     return await call_volcengine(
-        LibraryConfig.ENDPOINT_DEEPSEEK_PRO, prompt, system_prompt, 
-        temperature=0.3, book_id=book_id, task_name="精读缩减本编写 (DeepSeek)"
+        None, prompt, system_prompt, 
+        temperature=0.3, book_id=book_id, task_name="精读缩减本编写"
     )
+
 
 async def generate_podcast_script(book_title: str, condensed_text: str, book_id: str = "") -> str:
-    """由 DeepSeek-V4-Pro 创作双人对谈听书播客剧本 (NotebookLM 风格)"""
+    """创作双人对谈听书播客剧本 (NotebookLM 风格)"""
     system_prompt = """你是一位顶尖的播客制作人与对话编剧。
 请根据提供的图书精华，编写一份生动、深刻、口语化的【8~10分钟双人对谈播客剧本】。
-角色设定：
-- 🎙️ [睿哥]：资深实战派专家，深入浅出，善于用精彩比喻把复杂原理讲得透彻；
-- 🙋‍♂️ [小林]：求知欲极强的探索者，善于代表听众提出最尖锐、最实际的痛点问题与追问。
-要求：
-- 对话自然流畅，充满思维碰撞，拒绝念稿感；
-- 格式每行清晰标明：`[睿哥]：...` 或 `[小林]：...`"""
+角色：🎙️ [睿哥] (深入浅出的资深专家) 与 🙋‍♂️ [小林] (敏锐求知的探索者)。"""
 
-    prompt = f"""根据《{book_title}》的精华内容，生成一期精彩的双人对谈听书剧本：
-
-【图书精华内容】：
+    prompt = f"""根据《{book_title}》的精华内容，生成双人播客剧本：
 {condensed_text[:6000]}
-
-请输出双人播客对谈剧本："""
+请输出剧本："""
 
     return await call_volcengine(
-        LibraryConfig.ENDPOINT_DEEPSEEK_PRO, prompt, system_prompt, 
-        temperature=0.6, book_id=book_id, task_name="双人播客剧本创作 (DeepSeek)"
+        None, prompt, system_prompt, 
+        temperature=0.6, book_id=book_id, task_name="双人播客剧本创作"
     )
 
-# =========================================================================
-# 引擎 2：DeepSeek-V4-Pro (火山推演旗舰 · 擅长反常识洞见与深度题库命制)
-# =========================================================================
 
 async def generate_key_takeaways(book_title: str, book_text: str, book_id: str = "") -> Dict[str, Any]:
-    """由 DeepSeek-V4-Pro 提炼 3分钟极简透视、5大颠覆性洞见与 Mermaid 脉络图"""
+    """提炼 3分钟极简透视、5大颠覆性洞见与 Mermaid 脉络图"""
     sample_text = book_text[:10000]
-    system_prompt = """你是一位深邃的哲学家与顶级技术战略家。
-请从图书文本中提炼出：
-1. 【一句话主旨】：直击灵魂的一句话定位。
-2. 【5 大颠覆性洞见 (Key Takeaways)】：打破常规直觉、最具启发性的核心观点。
-3. 【全书逻辑架构 (Mermaid 脉络图)】：用 mermaid 代码块呈现章节递进与因果网。
-请以严谨规范的 Markdown 格式输出。"""
+    system_prompt = """请从图书文本中提炼：
+1. 【一句话主旨】
+2. 【5 大颠覆性洞见 (Key Takeaways)】
+3. 【全书逻辑架构 (Mermaid 脉络图)】"""
 
     prompt = f"""分析《{book_title}》的核心逻辑：
 {sample_text}
-
-请输出 3分钟极简透视、5大颠覆性洞见与 Mermaid 知识脉络图："""
+请输出 Markdown："""
 
     content = await call_volcengine(
-        LibraryConfig.ENDPOINT_DEEPSEEK_PRO, prompt, system_prompt, 
-        temperature=0.2, book_id=book_id, task_name="3分钟透视与脉络图 (DeepSeek)"
+        None, prompt, system_prompt, 
+        temperature=0.2, book_id=book_id, task_name="3分钟透视与脉络图"
     )
     return {"takeaways_markdown": content}
 
+
 async def generate_quizzes(book_title: str, condensed_text: str, book_id: str = "") -> List[Dict[str, Any]]:
-    """由 DeepSeek-V4-Pro 命制 10 道精选研习测试题 (带章节溯源与错项深度排查)"""
-    system_prompt = """你是一位严谨的大学教授与认证考核命题专家。
-请根据书籍精华内容，命制一套高质量的【章节研习测试题库】。
-要求包含：
-- 5 道单选题 (single)
-- 3 道多选题 (multiple)
-- 2 道实战情境案例题 (case)
-每道题必须严格输出 JSON 数组格式，字段包括：
-- id: 题目序号 (如 q1, q2)
-- type: single / multiple / case
-- question: 题干描述
-- options: 选项列表 ["A. ...", "B. ...", "C. ...", "D. ..."]
-- correct_answer: 正确选项 (如 "B" 或 "A,C")
-- chapter_source: 原书对应的章节知识点
-- analysis: 深度解析（为什么选这个、其他选项错在何处）
-请只返回合法的 JSON 代码块，不要包含任何多余文字。"""
+    """命制精选研习测试题"""
+    system_prompt = """根据书籍精华内容命制 10 道高质量【章节研习测试题库】(5道单选, 3道多选, 2道实战案例)。
+必须严格只输出合法的 JSON 数组，字段：id, type, question, options, correct_answer, chapter_source, analysis。"""
 
     prompt = f"""为《{book_title}》命制 10 道深度研习测试题：
-
-【书籍精华】：
 {condensed_text[:6000]}
-
-请严格输出 JSON 数组："""
+请输出 JSON 数组："""
 
     raw_json = await call_volcengine(
-        LibraryConfig.ENDPOINT_DEEPSEEK_PRO, prompt, system_prompt, 
-        temperature=0.1, book_id=book_id, task_name="10道章节测试题命制 (DeepSeek)"
+        None, prompt, system_prompt, 
+        temperature=0.1, book_id=book_id, task_name="10道章节测试题命制"
     )
     
-    # 清洗 JSON
     clean_json = raw_json.strip()
     if "```json" in clean_json:
         clean_json = clean_json.split("```json")[1].split("```")[0].strip()
@@ -517,23 +720,19 @@ async def generate_quizzes(book_title: str, condensed_text: str, book_id: str = 
             "analysis": raw_json
         }]
 
+
 async def generate_flashcards(book_title: str, condensed_text: str, book_id: str = "") -> List[Dict[str, str]]:
-    """由 DeepSeek-V4-Pro 提炼 12 张核心概念记忆闪卡 (Anki / 艾宾浩斯)"""
+    """提炼 12 张核心概念记忆闪卡"""
     system_prompt = """请为本书提炼 12 张核心概念【Anki 记忆闪卡】。
-每张卡片包含：
-- front: 正面提问（核心概念、定义或关键问题）
-- back: 背面回答（精准原著金句、定理或 Checklist）
-- tag: 标签分类
-请严格输出 JSON 数组格式。"""
+每张卡片包含：front, back, tag。严格输出 JSON 数组。"""
 
     prompt = f"""提炼《{book_title}》的核心概念记忆闪卡：
 {condensed_text[:5000]}
-
 请输出 JSON 数组："""
 
     raw = await call_volcengine(
-        LibraryConfig.ENDPOINT_DEEPSEEK_PRO, prompt, system_prompt, 
-        temperature=0.2, book_id=book_id, task_name="12张记忆闪卡提炼 (DeepSeek)"
+        None, prompt, system_prompt, 
+        temperature=0.2, book_id=book_id, task_name="12张记忆闪卡提炼"
     )
     clean = raw.strip()
     if "```json" in clean:

@@ -10,6 +10,7 @@ from pathlib import Path
 import requests
 import json
 import asyncio
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 parent_dir = str(Path(__file__).resolve().parent.parent)
@@ -74,33 +75,118 @@ def get_volcengine_async_client() -> AsyncOpenAI:
         base_url="https://ark.cn-beijing.volces.com/api/v3"
     )
 
+def compress_audio_if_large(audio_path: Path, max_mb: float = 15.0) -> Path:
+    """若音频文件大于 15MB，自动使用 ffmpeg 压缩为 16kHz 48kbps 单声道纯音频，避免触发 API 413/503"""
+    try:
+        size_mb = audio_path.stat().st_size / (1024 * 1024)
+        if size_mb <= max_mb:
+            return audio_path
+        
+        compressed_path = audio_path.with_name(f"{audio_path.stem}_opt.m4a")
+        import subprocess
+        cmd = [
+            "ffmpeg", "-y", "-i", str(audio_path),
+            "-vn", "-ac", "1", "-ar", "16000", "-b:a", "48k",
+            str(compressed_path)
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+        if res.returncode == 0 and compressed_path.exists() and compressed_path.stat().st_size > 1024:
+            logger.info(f"⚡ 音频超限 ({size_mb:.1f}MB)，自适应无损压缩为 {compressed_path.stat().st_size // 1024} KB")
+            return compressed_path
+    except Exception as e:
+        logger.warning(f"自适应压缩音频失败: {e}，使用原文件")
+    return audio_path
+
+def transcribe_dashscope_realtime(audio_path: Path, model: str = "paraformer-realtime-v2") -> str:
+    """使用阿里百炼官方 Recognition 原生流式引擎极速识别本地音轨 (支持 paraformer-realtime-v2 / v1，带用完即停硬锁)"""
+    import subprocess
+    import dashscope
+    from dashscope.audio.asr import Recognition, RecognitionCallback, RecognitionResult
+
+    dashscope.api_key = Config.DASHSCOPE_API_KEY
+    wav_path = audio_path.with_name(f"{audio_path.stem}_16k.wav")
+    try:
+        from services.downloader import find_ffmpeg
+        ffmpeg_bin = find_ffmpeg() or "ffmpeg"
+        sample_rate = 8000 if "8k" in model else 16000
+        subprocess.run([
+            ffmpeg_bin, "-y", "-i", str(audio_path),
+            "-vn", "-ac", "1", "-ar", str(sample_rate),
+            str(wav_path)
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+
+        class ASRCallback(RecognitionCallback):
+            def __init__(self):
+                self.sentences = []
+            def on_event(self, result: RecognitionResult):
+                sentence = result.get_sentence()
+                if sentence and "text" in sentence:
+                    self.sentences.append(sentence["text"])
+
+        cb = ASRCallback()
+        rec = Recognition(model=model, format="wav", sample_rate=sample_rate, callback=cb)
+        result = rec.call(str(wav_path))
+        
+        sentences = result.get_sentence() if result else None
+        if sentences:
+            text = "".join([s.get("text", "") for s in sentences if s.get("text")])
+        else:
+            text = "".join(cb.sentences)
+            
+        cleaned = re.sub(r"<\|[^|]+\|>", "", text).strip()
+        if len(cleaned) > 0:
+            logger.info(f"✅ 百炼实时 ASR [{model}] 转写成功！共 {len(cleaned)} 字")
+            return cleaned
+    except Exception as e:
+        logger.warning(f"百炼实时 ASR [{model}] 识别异常: {e}")
+    finally:
+        if wav_path.exists():
+            try:
+                wav_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+    return ""
+
 def transcribe_audio_sensevoice(audio_path: Path, preferred_models: list = None) -> str:
     """
-    智能多级语音识别级联引擎：
-    1. 首选：硅基流动 SiliconFlow SenseVoiceSmall (原生永久 0 费用免费，国内极速)
-    2. 备用：阿里百炼 DashScope (paraformer-v2 -> paraformer-v1 -> sensevoice-v1)
+    智能多级语音识别级联引擎 (100% 绝对 0 成本 · 用完即停硬锁保护)：
+    1. 首选：阿里百炼官方 4 大活跃实时 ASR 矩阵 (paraformer-realtime-v2 -> v1 -> 8k-v2 -> 8k-v1，各36000秒充沛免费额度)
+    2. 备用：硅基流动 FunAudioLLM/SenseVoiceSmall (永久 0 元免费专区，带 16kHz 自适应压缩)
+    3. 兜底：阿里百炼 DashScope 异步 Transcription 级联
     """
-    # 1. 优先尝试硅基流动 SenseVoiceSmall (永久免费 0 元)
+    # 1. 优先调用阿里百炼实时 ASR 模型矩阵 (官方用完即停硬锁，免费额度充沛)
+    realtime_models = ["paraformer-realtime-v2", "paraformer-realtime-v1", "paraformer-realtime-8k-v2", "paraformer-realtime-8k-v1"]
+    for rm in realtime_models:
+        logger.info(f"🎙️ [首选] 正在调用阿里百炼实时 ASR 模型 [{rm}] 进行高精语音识别...")
+        text = transcribe_dashscope_realtime(audio_path, model=rm)
+        if text:
+            return text
+
+    # 2. 备用降级：硅基流动 SenseVoiceSmall (永久免费 0 元，带 16kHz 自适应压缩)
+    target_path = compress_audio_if_large(audio_path)
     sf_key = os.getenv("SILICONFLOW_API_KEY", "sk-wewpjlyfvwflfcqivobyumvhybqldextibizkxtkmajkkqvs")
     if sf_key:
-        try:
-            logger.info(f"🎙️ [首选] 正在调用硅基流动 SenseVoiceSmall 进行语音转写 (0元永久免费)...")
-            with open(audio_path, "rb") as f:
-                files = {"file": (audio_path.name, f, get_mime_type(audio_path))}
-                data = {"model": "FunAudioLLM/SenseVoiceSmall"}
-                headers = {"Authorization": f"Bearer {sf_key}"}
-                with httpx.Client(timeout=60.0) as client:
-                    res = client.post("https://api.siliconflow.cn/v1/audio/transcriptions", headers=headers, files=files, data=data)
-                    if res.status_code == 200:
-                        text = res.json().get("text", "").strip()
-                        cleaned_text = re.sub(r"<\|[^|]+\|>", "", text).strip()
-                        if len(cleaned_text) > 0:
-                            logger.info(f"✅ 硅基流动 SenseVoiceSmall 转写成功！共 {len(cleaned_text)} 字")
-                            return cleaned_text
-                    else:
-                        logger.warning(f"硅基流动 SenseVoice 返回非200: {res.status_code} {res.text}")
-        except Exception as sf_err:
-            logger.warning(f"硅基流动 SenseVoice 调用异常: {sf_err}，平滑切换至阿里百炼...")
+        for attempt in range(1, 3):
+            try:
+                logger.info(f"🎙️ [备用] 正在调用硅基流动 SenseVoiceSmall 进行语音转写 (第 {attempt} 次尝试 · 0元永久免费)...")
+                with open(target_path, "rb") as f:
+                    files = {"file": (target_path.name, f, get_mime_type(target_path))}
+                    data = {"model": "FunAudioLLM/SenseVoiceSmall"}
+                    headers = {"Authorization": f"Bearer {sf_key}"}
+                    with httpx.Client(timeout=60.0) as client:
+                        res = client.post("https://api.siliconflow.cn/v1/audio/transcriptions", headers=headers, files=files, data=data)
+                        if res.status_code == 200:
+                            text = res.json().get("text", "").strip()
+                            cleaned_text = re.sub(r"<\|[^|]+\|>", "", text).strip()
+                            if len(cleaned_text) > 0:
+                                logger.info(f"✅ 硅基流动 SenseVoiceSmall 转写成功！共 {len(cleaned_text)} 字")
+                                return cleaned_text
+                        else:
+                            logger.warning(f"硅基流动 SenseVoice 返回非200: {res.status_code} {res.text}")
+            except Exception as sf_err:
+                logger.warning(f"硅基流动 SenseVoice 调用异常: {sf_err}")
+            time.sleep(1.5)
+        logger.warning("硅基流动 SenseVoice 两次尝试均未成功，平滑切换至阿里百炼...")
 
     # 2. 备用降级：阿里百炼 DashScope 级联
     if preferred_models is None:
@@ -203,26 +289,27 @@ async def _summarize_with_glm_stream(text: str, title: str):
                 yield delta
         return
     except Exception as tg_err:
-        logger.warning(f"TokenGate 网关调度异常 ({tg_err})，自动切换至阿里百炼 / 硅基流动备用...")
+        logger.warning(f"TokenGate 网关调度异常 ({tg_err})，自动切换至七牛云 300万免费包备用...")
 
-    # 2. 备用容灾：硅基流动 SiliconFlow
+    # 2. 备用容灾：七牛云 300万 Token 免费包 (DeepSeek-V3 / V4 满血版 · 100% 免费)
     try:
-        sf_key = os.getenv("SILICONFLOW_API_KEY", "sk-wewpjlyfvwflfcqivobyumvhybqldextibizkxtkmajkkqvs")
-        sf_client = AsyncOpenAI(http_client=httpx.AsyncClient(proxy=None, timeout=45.0), api_key=sf_key, base_url="https://api.siliconflow.cn/v1")
-        response = await sf_client.chat.completions.create(
-            model="zai-org/GLM-5.2",
+        qiniu_key = os.getenv("QINIU_API_KEY", "sk-383d4909f49c0db53ad4976552799a7cf6735358e3d90d02dfa5670117441750")
+        qiniu_client = AsyncOpenAI(http_client=httpx.AsyncClient(proxy=None, timeout=45.0), api_key=qiniu_key, base_url="https://api.qnaigc.com/v1")
+        response = await qiniu_client.chat.completions.create(
+            model="deepseek-v3",
             messages=[{"role": "user", "content": prompt}],
             stream=True
         )
         async for chunk in response:
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
+        return
     except Exception as e:
-        logger.error(f"GLM-5.2 总结双通道均失败: {e}")
-        yield f"\n\n> [!WARNING] GLM-5.2 分析失败: {e}"
+        logger.error(f"七牛云备用通道分析失败: {e}")
+        yield f"\n\n> [!WARNING] 分析失败: {e}"
 
 async def _summarize_with_volcengine_stream(text: str, title: str):
-    """由 DeepSeek-V4-Pro 进行深度推理与逻辑解构 (Volcengine 180万安全池 ➔ SiliconFlow DeepSeek 0元备用)"""
+    """由七牛云 300万免费包 DeepSeek-V4-Flash / Pro 进行深度推理与逻辑解构 (100% 绝对 0 扣费)"""
     prompt = (
         f"视频/文章标题：《{title}》\n\n"
         f"【严格约束】：你必须 100% 严格基于以下提供的【真实原文内容】进行分析与提炼！"
@@ -232,52 +319,42 @@ async def _summarize_with_volcengine_stream(text: str, title: str):
         f"请输出 Markdown 格式的深度提炼（包含：🎯 核心观点摘要、📌 关键脉络与论据、💡 核心洞察）："
     )
 
-    est_tokens = estimator.estimate_text_tokens(prompt) + 2500 if estimator else 5000
-    allow_volc = True
-    if budget_guard:
-        allowed, _, _, _, reason = budget_guard.can_allocate("deepseek-v4-pro", est_tokens)
-        if not allowed:
-            logger.warning(f"🛡️ [TG-Bot 预算门神] DeepSeek-V4-Pro {reason} ➔ 自动切换至硅基流动 DeepSeek 0元保底池")
-            allow_volc = False
-
-    # 1. 优先在安全水位内调用火山方舟 DeepSeek-V4-Pro
-    if allow_volc:
-        try:
-            client = get_volcengine_async_client()
-            model_id = os.getenv("VOLCENGINE_ENDPOINT_DEEPSEEK_PRO", "ep-20260820195716-snkzx")
-            response = await client.chat.completions.create(
-                model=model_id,
-                messages=[{"role": "user", "content": prompt}],
-                stream=True
-            )
-            accumulated = ""
-            async for chunk in response:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    delta = chunk.choices[0].delta.content
-                    accumulated += delta
-                    yield delta
-            if budget_guard and estimator:
-                act = estimator.estimate_text_tokens(accumulated) + est_tokens
-                budget_guard.record_usage("deepseek-v4-pro", act, provider="volcengine")
-            return
-        except Exception as volc_err:
-            logger.warning(f"火山方舟 DeepSeek 异常 ({volc_err})，自动切换至硅基流动 DeepSeek 备用...")
-
-    # 2. 备用容灾：硅基流动 SiliconFlow
+    # 1. 优先调用七牛云 300万免费包 DeepSeek-V4-Pro / Flash
     try:
-        sf_key = os.getenv("SILICONFLOW_API_KEY", "sk-wewpjlyfvwflfcqivobyumvhybqldextibizkxtkmajkkqvs")
-        sf_client = AsyncOpenAI(http_client=httpx.AsyncClient(proxy=None, timeout=45.0), api_key=sf_key, base_url="https://api.siliconflow.cn/v1")
-        response = await sf_client.chat.completions.create(
-            model="deepseek-ai/DeepSeek-V3",
+        qiniu_key = os.getenv("QINIU_API_KEY", "sk-383d4909f49c0db53ad4976552799a7cf6735358e3d90d02dfa5670117441750")
+        client = AsyncOpenAI(
+            http_client=httpx.AsyncClient(proxy=None, timeout=60.0),
+            api_key=qiniu_key,
+            base_url="https://api.qnaigc.com/v1"
+        )
+        response = await client.chat.completions.create(
+            model="deepseek/deepseek-v4-flash",
             messages=[{"role": "user", "content": prompt}],
             stream=True
         )
         async for chunk in response:
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
+        return
+    except Exception as qn_err:
+        logger.warning(f"七牛云 V4-Flash 异常 ({qn_err})，切换至阿里百炼用完即停免费模型...")
+
+    # 2. 备用容灾：阿里百炼官方 Qwen3.8-Max / Kimi-K3 (已开启用完即停安全锁)
+    try:
+        ds_key = os.getenv("DASHSCOPE_API_KEY", "")
+        ds_client = AsyncOpenAI(http_client=httpx.AsyncClient(proxy=None, timeout=60.0), api_key=ds_key, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
+        response = await ds_client.chat.completions.create(
+            model="qwen3.8-max-0902",
+            messages=[{"role": "user", "content": prompt}],
+            stream=True
+        )
+        async for chunk in response:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+        return
     except Exception as e:
-        logger.error(f"DeepSeek 总结双通道均失败: {e}")
-        yield f"\n\n> [!WARNING] DeepSeek 分析失败: {e}"
+        logger.error(f"阿里百炼容灾通道失败: {e}")
+        yield f"\n\n> [!WARNING] 深度分析失败: {e}"
 
 async def multi_model_summarize_stream(text: str, title: str, update_callback=None) -> str:
     """并行调用双模型 (DeepSeek-V4-Pro + GLM-5.2)，支持流式返回状态，带有严格防幻觉校验与 Markdown 净空"""
@@ -347,14 +424,19 @@ async def analyze_web_url_stream(url: str, update_callback=None) -> dict:
         if raw_markdown.strip().startswith('{"data":null,"code":'):
             raise ValueError("Jina IP 被封禁或需要认证")
             
+        if "404 not found" in raw_markdown.lower() or "page not found" in raw_markdown.lower():
+            raise ValueError("目标页面返回 404 (内容已被删除或链接失效)")
+            
         if len(raw_markdown.strip()) < 100:
-            raise ValueError("提取的正文过短，可能遭遇反爬或动态渲染")
+            raise ValueError("提取的正文过短，可能遭遇反爬、动态渲染或内容已失效")
             
     except Exception as e:
         logger.error(f"Jina 抓取失败: {e}")
         return {
             "title": "抓取失败",
-            "content": f"❌ **无法获取原文正文。**\n> 失败原因：`{e}`\n\n此链接可能是需要登录的页面、纯动态渲染或是防爬虫系统拦截。为避免大模型由于没有原文依据而产生“幻觉”和强行猜测，系统已自动终止后续的摘要分析任务。"
+            "is_error": True,
+            "error_msg": str(e),
+            "content": f"❌ **无法获取原文正文。**\n> 失败原因：`{e}`\n\n此链接内容可能已被作者删除、下架，或遭遇防爬虫拦截。系统已自动终止后续分析与落库流程，避免产生无意义的空笔记。"
         }
 
     title = "网页/文章剪藏"

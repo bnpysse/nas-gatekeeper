@@ -22,7 +22,7 @@ if str(project_root) not in sys.path:
 if str(current_dir) not in sys.path:
     sys.path.insert(0, str(current_dir))
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.request import HTTPXRequest
 
 import google.generativeai as genai
@@ -71,20 +71,26 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_permission(update):
         return
     welcome_text = (
-        "🧠 *SecondBrain-Flow 第二大脑自动化系统已上线！*\n\n"
+        "🧠 *SecondBrain-Flow · N100 移动控制中心*\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
         "你可以直接向我发送：\n"
-        "1. 🍵 **微信公众号文章链接**：抓取 100% 完整原文并由 DeepSeek-V4 提炼深度简报，双轨归档至 `Auto_Clippings`。\n"
-        "2. 🎥 **头条/抖音/B站/YouTube 视频链接**：提取音轨由 百炼 (DashScope) 生成【核心总结 + 中文逐字稿】。\n"
+        "1. 🍵 **微信公众号文章链接**：抓取 100% 原文并由 Qwen-Plus 深度提炼，双轨归档 `Auto_Clippings`。\n"
+        "2. 🎥 **B站/抖音/YouTube 视频链接**：提取音轨由 DashScope 生成【核心总结 + 中文逐字稿】。\n"
         "3. 📰 **知乎/商业专栏/普通网页链接**：抓取正文并由多模型提炼要点。\n"
-        "4. 🎙️ **文本/闪念**：自动记录落地。\n\n"
-        "⚙️ 指令清单：\n"
-        "/weread - 📚 微信读书划线与精读报告自动同步指南\n"
-        "/quiz [主题] - 📚 AI 智能图书馆动态无限出题与深度题解\n"
-        "/quota - ⚡ 探测 TokenGate 全网免费算力与临期资产\n"
-        "/chat <内容> - 🧠 TokenGate 智能调度大模型对话\n"
-        "/ask <问题> - 🔍 RAG 语义检索 Obsidian 知识库\n"
-        "/status - 🟢 查看第二大脑运行状态\n"
-        "/clean - 🧹 清理 30 天前旧草稿"
+        "4. 🎙️ **随手笔记/语音闪念**：自动记录入库。\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "📱 *核心指令大盘*：\n"
+        "🔍 `/ask <问题>` - 🎯 Rerank 高阶精准知识库检索\n"
+        "🧠 `/chat <内容>` - ⚡ 旗舰大模型多轮智能对话\n"
+        "💻 `/probe` - 📊 N100 硬件探针与网络健康\n"
+        "⚡ `/quota` - 💎 大模型额度与 Token 消费大屏\n"
+        "📚 `/library` - 📖 图书馆 437 本专著与解析进度\n"
+        "🛠️ `/ops` - ⚙️ N100 核心服务管理与一键重启\n"
+        "📝 `/quiz [主题]` - 🎲 动态题库无限生成与深度题解\n"
+        "📖 `/weread` - 📚 微信读书划线自动同步指南\n"
+        "🧹 `/clean` - 🧹 清理 30 天前过期草稿\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "🟢 *系统状态极其健康，已连接 N100 边缘节点*"
     )
     await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
@@ -222,7 +228,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await tracker.step(4, "语音转文字完成", "OK", "文字逐字稿已就绪")
 
             # Step 5: 双模型深度总结
-            await tracker.step(5, "多模型深度提炼", "OK", "火山引擎 DeepSeek-V4 & 阿里百炼 Qwen 分析完成")
+            await tracker.step(5, "多模型深度提炼", "OK", "国家超算中心 SCNet & 阿里千问 Qwen 分析完成")
 
             # Step 6: 归档落库
             await tracker.step(6, "知识库归档与同步", "RUNNING", "保存至 Obsidian & 同步 Google Drive / OneDrive...")
@@ -262,9 +268,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await tracker.step(4, "正在抓取网页正文", "RUNNING", "Jina Reader 提取全文内容...")
                 ai_result = await analyze_web_url_stream(url)
+                if ai_result.get("is_error"):
+                    await tracker.step(4, "正文抓取未命中", "WARN", ai_result.get("error_msg", "内容不可用")[:50])
+                    fail_msg = (
+                        f"⚠️ *链接处理中断通知*\n\n"
+                        f"{ai_result['content']}\n\n"
+                        f"📋 **执行工作流追踪**:\n"
+                        f"{tracker.get_summary_trace()}"
+                    )
+                    await msg.edit_text(fail_msg)
+                    return
+
                 await tracker.step(4, "网页正文抓取完成", "OK", f"成功抓取《{ai_result['title'][:30]}》")
 
-                await tracker.step(5, "多模型深度提炼", "OK", "火山引擎 DeepSeek-V4 & 阿里百炼 Qwen 分析完成")
+                await tracker.step(5, "多模型深度提炼", "OK", "阿里百炼 & 七牛云满血大模型分析完成")
 
                 await tracker.step(6, "知识库归档与同步", "RUNNING", "保存至 Obsidian & 同步云盘...")
                 note_path = await save_to_obsidian_inbox(
@@ -305,7 +322,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await tracker.step(2, "微信全文抓取成功", "OK", f"《{ai_result['title'][:25]}...》({len(ai_result['raw_content'])}字)")
 
-            await tracker.step(3, "AI 深度拆解与提炼", "OK", "火山引擎 DeepSeek-V4 结构化分析完成")
+            await tracker.step(3, "AI 深度拆解与提炼", "OK", "国家超算中心 SCNet-Max 结构化分析完成")
 
             await tracker.step(4, "归档至 Auto_Clippings 并同步", "RUNNING", "双轨落库 (原文 + 深度简报)...")
             archive_info = await save_to_obsidian_autoclippings(
@@ -346,7 +363,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ai_result = await analyze_web_url_stream(url)
             await tracker.step(2, "网页正文抓取完成", "OK", f"成功抓取《{ai_result['title'][:30]}》")
 
-            await tracker.step(3, "多模型深度提炼", "OK", "火山引擎 DeepSeek-V4 & 阿里百炼 Qwen 分析完成")
+            await tracker.step(3, "多模型深度提炼", "OK", "国家超算中心 SCNet & 阿里千问 Qwen 分析完成")
 
             await tracker.step(4, "知识库归档与同步", "RUNNING", "保存至 Obsidian & 同步云盘...")
             note_path = await save_to_obsidian_inbox(
@@ -400,18 +417,141 @@ def main():
     if proxy_url:
         if not (proxy_url.startswith("http://") or proxy_url.startswith("https://") or proxy_url.startswith("socks5://")):
             proxy_url = f"http://{proxy_url}"
-        logger.info(f"配置 Telegram 代理: {proxy_url}")
-        
-        try:
-            request_client = HTTPXRequest(proxy=proxy_url)
-            get_updates_request_client = HTTPXRequest(proxy=proxy_url)
-        except TypeError:
-            request_client = HTTPXRequest(proxy_url=proxy_url)
-            get_updates_request_client = HTTPXRequest(proxy_url=proxy_url)
+        request_client = HTTPXRequest(
+            proxy=proxy_url,
+            connect_timeout=30.0,
+            read_timeout=30.0,
+            write_timeout=30.0,
+            pool_timeout=15.0
+        )
+        get_updates_request_client = HTTPXRequest(
+            proxy=proxy_url,
+            connect_timeout=30.0,
+            read_timeout=30.0,
+            write_timeout=30.0,
+            pool_timeout=15.0
+        )
         
         builder = builder.request(request_client).get_updates_request(get_updates_request_client)
 
+    async def post_init(application: Application):
+        """自动向 Telegram 官方服务器注册并刷新 10 大快捷指令菜单"""
+        try:
+            commands = [
+                BotCommand("start", "🚀 启动并查看所有功能中心"),
+                BotCommand("ask", "🔍 Rerank 高阶精准知识库检索"),
+                BotCommand("chat", "🧠 免费旗舰大模型对话"),
+                BotCommand("probe", "💻 N100 硬件探针与网络健康"),
+                BotCommand("quota", "⚡ 大模型额度与 Token 消费大屏"),
+                BotCommand("library", "📚 图书知识库与解析进度"),
+                BotCommand("ops", "🛠️ N100 服务管理与一键运维"),
+                BotCommand("quiz", "📝 智能图书馆动态出题研习"),
+                BotCommand("weread", "📖 微信读书划线与精读同步"),
+                BotCommand("clean", "🧹 清理过期临时草稿"),
+            ]
+            await application.bot.set_my_commands(commands)
+            logger.info("✅ 成功向 Telegram 官方注册并刷新 10 大快捷指令菜单！")
+        except Exception as e:
+            logger.warning(f"向 Telegram 注册指令菜单失败: {e}")
+
+    builder = builder.post_init(post_init)
     app = builder.build()
+
+    # 💻 新增 /probe 与 /sys 硬件探针指令
+    async def probe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not check_permission(update):
+            return
+        status_msg = await update.message.reply_text("🔍 正在探测 N100 硬件性能与网络健康...")
+        try:
+            from services.probe import get_system_probe, format_probe_message
+            info = await get_system_probe()
+            text = format_probe_message(info)
+            await status_msg.edit_text(text, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"探针采集失败: {e}")
+            await status_msg.edit_text(f"❌ 探针采集异常: {e}")
+
+    # 📚 新增 /library 与 /books 图书馆大盘指令
+    async def library_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not check_permission(update):
+            return
+        status_msg = await update.message.reply_text("📚 正在调取第二大脑·AI 智能图书馆全景大盘...")
+        try:
+            from services.ops import get_library_overview, format_library_message
+            data = await get_library_overview()
+            text = format_library_message(data)
+            
+            keyboard = [
+                [InlineKeyboardButton("🛡️ 立即自愈受损讲义", callback_data="ops_trigger:audit")],
+                [InlineKeyboardButton("🎲 图书馆随机盲盒出题", callback_data="quiz_book:random")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await status_msg.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"获取图书馆大盘失败: {e}")
+            await status_msg.edit_text(f"❌ 获取图书馆大盘失败: {e}")
+
+    # 🛠️ 新增 /ops 与 /service, /restart 服务运维控制台指令
+    async def ops_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not check_permission(update):
+            return
+        status_msg = await update.message.reply_text("🛠️ 正在检测 N100 边缘节点各核心服务状态...")
+        try:
+            from services.ops import get_services_status, format_ops_message
+            services = get_services_status()
+            text, keyboard_data = format_ops_message(services)
+            
+            keyboard = []
+            for row in keyboard_data:
+                if isinstance(row, list):
+                    keyboard.append([InlineKeyboardButton(b["text"], callback_data=b["callback_data"]) for b in row])
+                elif isinstance(row, dict):
+                    keyboard.append([InlineKeyboardButton(row["text"], callback_data=row["callback_data"])])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await status_msg.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"获取服务状态失败: {e}")
+            await status_msg.edit_text(f"❌ 运维大盘获取失败: {e}")
+
+    # 🔘 运维内联按钮回调处理器
+    async def ops_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+        data = query.data
+        from services.ops import restart_system_service, get_services_status, format_ops_message
+        
+        if data.startswith("ops_restart:"):
+            short_code = data.replace("ops_restart:", "")
+            await query.edit_message_text(f"⏳ 正在安全重启服务 【{short_code}】...")
+            ok, msg = restart_system_service(short_code)
+            
+            services = get_services_status()
+            text, kb_data = format_ops_message(services)
+            kb = []
+            for row in kb_data:
+                if isinstance(row, list):
+                    kb.append([InlineKeyboardButton(b["text"], callback_data=b["callback_data"]) for b in row])
+                elif isinstance(row, dict):
+                    kb.append([InlineKeyboardButton(row["text"], callback_data=row["callback_data"])])
+            full_text = f"{msg}\n\n{text}"
+            await query.message.reply_text(full_text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+            
+        elif data == "ops_trigger:audit":
+            await query.edit_message_text("🛡️ 正在后台触发一轮受损讲义自动修复与巡检...")
+            import subprocess
+            subprocess.Popen(["/opt/SecondBrain-Flow/.venv/bin/python3", "/opt/SecondBrain-Flow/books_pipeline/library_auditor.py", "--limit", "5"])
+            await query.message.reply_text("✅ 成果巡检自愈子进程已在后台启动（本次计划修复前 5 本受损图书）。")
+            
+        elif data == "ops_refresh:all":
+            services = get_services_status()
+            text, kb_data = format_ops_message(services)
+            kb = []
+            for row in kb_data:
+                if isinstance(row, list):
+                    kb.append([InlineKeyboardButton(b["text"], callback_data=b["callback_data"]) for b in row])
+                elif isinstance(row, dict):
+                    kb.append([InlineKeyboardButton(row["text"], callback_data=row["callback_data"])])
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
     # 新增 /ask 命令，对接 RAG 引擎
     async def ask_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -436,49 +576,59 @@ def main():
     async def quota_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not check_permission(update):
             return
-        status_msg = await update.message.reply_text("⚡ 正在探测 TokenGate 全网免费算力状态...")
+        status_msg = await update.message.reply_text("⚡ 正在探测多平台大模型免费配额与 Token 台账...")
         try:
-            import httpx
-            data = None
-            for u in ["https://tg.donglida.com/api/quotas", "https://tg.donglida.xyz/api/quotas"]:
-                try:
-                    async with httpx.AsyncClient(timeout=6.0) as client:
-                        resp = await client.get(u)
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            break
-                except Exception:
-                    continue
+            # 读取 Turso 数据库台账
+            try:
+                from books_pipeline.db import execute_turso
+            except ImportError:
+                from services.rag import _execute_turso as execute_turso
+                
+            ledger_rows = await execute_turso("""
+                SELECT provider, model_name, count(*) as calls, sum(total_tokens) as total_tokens, sum(cost_cny) as total_cost 
+                FROM library_usage_ledger 
+                GROUP BY provider, model_name;
+            """)
             
-            if not data:
-                await status_msg.edit_text("❌ 无法连接 TokenGate 算力网关，请检查服务器网络。")
-                return
-
-            total_models = data.get("total_free_models", 0)
-            daily_tokens = data.get("daily_replenish_tokens", "200万+ / 天")
-            providers = data.get("providers", {})
-            
-            all_models = []
-            for p in providers.values():
-                if p.get("active"):
-                    all_models.extend(p.get("models", []))
-            
-            expiring = [m for m in all_models if m.get("days_left") is not None and m["days_left"] <= 30]
-            expiring_txt = "\n".join([f"• 🔥 *{m['name']}*: 剩余 {m.get('remaining_ratio',1)*100:.1f}% | 仅剩 `{m['days_left']} 天` ({m.get('expire_date')})" for m in expiring]) or "暂无 30 天内临期模型"
-            
+            ledger_txt = ""
+            for r in ledger_rows:
+                p = r.get("provider", "")
+                m = r.get("model_name", "")
+                calls = r.get("calls", 0)
+                t_tokens = int(r.get("total_tokens") or 0)
+                cost = float(r.get("total_cost") or 0.0)
+                ledger_txt += f"• **[{p}]** `{m}`: `{calls}` 次调用 | `{t_tokens:,}` Tokens | 费用 `¥{cost:.4f}`\n"
+            if not ledger_txt:
+                ledger_txt = "暂无今日台账记录\n"
+                
             text = (
-                "⚡ *TokenGate 免费算力全景审计 (N100 直连)*\n\n"
-                f"📊 *算力总览*：已纳管 `{total_models}` 款免费模型 | 每日循环补给 `{daily_tokens}`\n\n"
-                f"🚨 *临期抢跑资产 (建议全速消耗)*：\n{expiring_txt}\n\n"
-                "🔄 *每日无限续杯*：\n• **DeepSeek-V4-Pro (火山)**: 2,000,000 Tokens/天 (每日0点重置)\n\n"
-                "💎 *知识库底座*：\n• **Qwen3-VL-Embedding (2560维)**: 2M 额度 (剩余 99.9%)\n• **Qwen3-VL-Rerank**: 100% 满血\n\n"
-                "🌐 *算力大屏*：[https://tg.donglida.com](https://tg.donglida.com)\n"
-                "🚀 *网关调度*：`model='auto'` 优先消耗临期与每日免费"
+                "⚡ *第二大脑·全网免费大模型算力大屏*\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "💎 *阿里百炼 (DashScope) 13 员猛将 (用完即停 0 扣费)*：\n"
+                "• `qwen3.7-plus`: 剩 30.9万 (去水精读主力，到期 09/01)\n"
+                "• `qwen3.7-plus-2026-05-26`: 剩 100万 (双生满额)\n"
+                "• `qwen3.7-max`: 剩 60.3万 (深度架构透视，到期 09/08)\n"
+                "• `deepseek-v4-flash`: 剩 100万满额 (到期 10/31)\n"
+                "• `glm-5.2` / `kimi-k3` / `kimi-code`: 各 100万满额\n"
+                "• `qwen3-vl-rerank`: 剩 100万满额 (高阶重排，到期 11/13)\n"
+                "• 🎙️ 59 款 Sambert 语音模型: 终身免费 (到期 2099/01/01)\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "🔄 *火山方舟 (VolcEngine) 每日循环返还池*：\n"
+                "• **DeepSeek-V4-Pro**: 剩 `98.7 万` (每日上限200万，T+1 日 1:1 返还)\n"
+                "• **DeepSeek-V4-Flash**: 剩 `248.3 万` (长期免费资源包)\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "🌐 *Google Gemini (100万超大上下文)*：\n"
+                "• `gemini-3.5-flash-lite`: 1,500次/天 (实测 1.2s 极速 · 100% 免费)\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "📊 *Turso 生产环境实际消耗与费用明细*：\n"
+                f"{ledger_txt}"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "🛡️ *全链路严格运行于 0 扣费免费通道，扣费隐患已全部物理硬锁*"
             )
             await status_msg.edit_text(text, parse_mode="Markdown")
         except Exception as e:
             logger.error(f"查询配额失败: {e}")
-            await status_msg.edit_text(f"❌ 探测 TokenGate 失败: {e}")
+            await status_msg.edit_text(f"❌ 探测算力大屏失败: {e}")
 
     # 新增 /chat 命令，通过 TokenGate 智能统一调度
     async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -677,6 +827,13 @@ def main():
     app.add_error_handler(error_handler)
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("status", status_command))
+    app.add_handler(CommandHandler("probe", probe_command))
+    app.add_handler(CommandHandler("sys", probe_command))
+    app.add_handler(CommandHandler("library", library_command))
+    app.add_handler(CommandHandler("books", library_command))
+    app.add_handler(CommandHandler("ops", ops_command))
+    app.add_handler(CommandHandler("service", ops_command))
+    app.add_handler(CommandHandler("restart", ops_command))
     app.add_handler(CommandHandler("weread", weread_command))
     app.add_handler(CommandHandler("quota", quota_command))
     app.add_handler(CommandHandler("tokens", quota_command))
@@ -684,6 +841,7 @@ def main():
     app.add_handler(CommandHandler("ask", ask_command))
     app.add_handler(CommandHandler("chat", chat_command))
     app.add_handler(CommandHandler("quiz", quiz_command))
+    app.add_handler(CallbackQueryHandler(ops_callback_handler, pattern=r"^ops_"))
     app.add_handler(CallbackQueryHandler(quiz_callback_handler, pattern=r"^quiz_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 

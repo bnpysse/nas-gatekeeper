@@ -19,16 +19,17 @@ from .providers.modelscope import ModelScopeProvider
 from .providers.gemini import GeminiProvider
 from .providers.deepseek import DeepSeekProvider
 from .providers.siliconflow import SiliconFlowProvider
+from .providers.qiniu import QiniuProvider
 
 class DetectorEngine:
     def __init__(self):
         self.providers = [
             DashScopeProvider(),
             VolcengineProvider(),
-            ModelScopeProvider(),
             GeminiProvider(),
             DeepSeekProvider(),
             SiliconFlowProvider(),
+            QiniuProvider(),
         ]
         self._cached_summary: Optional[QuotaSummary] = None
         self._last_detect_time: float = 0

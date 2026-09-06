@@ -303,19 +303,19 @@ class CrawlerDoctor:
             except Exception as e:
                 print(f"⚠️ DashScope 诊断调用失败: {e}", file=sys.stderr)
 
-        # 3. 硅基流动 SiliconFlow 0 元保底
-        sf_key = os.getenv("SILICONFLOW_API_KEY", "")
-        if sf_key:
+        # 3. 七牛云 300万免费包 deepseek-v3 保底 (100% 免费)
+        qn_key = os.getenv("QINIU_API_KEY", "sk-383d4909f49c0db53ad4976552799a7cf6735358e3d90d02dfa5670117441750")
+        if qn_key:
             try:
-                with httpx.Client(timeout=30.0, trust_env=False) as client:
+                with httpx.Client(timeout=30.0, trust_env=True) as client:
                     resp = client.post(
-                        "https://api.siliconflow.cn/v1/chat/completions",
+                        "https://api.qnaigc.com/v1/chat/completions",
                         headers={
-                            "Authorization": f"Bearer {sf_key}",
+                            "Authorization": f"Bearer {qn_key}",
                             "Content-Type": "application/json"
                         },
                         json={
-                            "model": "deepseek-ai/DeepSeek-V3",
+                            "model": "deepseek-v3",
                             "messages": [
                                 {"role": "system", "content": "你是 N100 第二大脑的高级 AIOps 自治运维专家，诊断精准精炼。"},
                                 {"role": "user", "content": prompt}
@@ -328,7 +328,7 @@ class CrawlerDoctor:
                         data = resp.json()
                         return data["choices"][0]["message"]["content"].strip()
             except Exception as e:
-                print(f"⚠️ SiliconFlow 诊断调用失败: {e}", file=sys.stderr)
+                print(f"⚠️ 七牛云诊断调用失败: {e}", file=sys.stderr)
 
         # 降级：使用 Gemini
         if GEMINI_API_KEY:

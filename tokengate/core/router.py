@@ -29,16 +29,16 @@ class SmartRouter:
 
         if not active_models:
             fallback = ModelItem(
-                id="deepseek-ai/DeepSeek-V4-Pro",
-                name="DeepSeek-V4-Pro (默认回退)",
-                provider="modelscope",
-                tier_desc="社区免费 Serverless 回退"
+                id="deepseek-v3",
+                name="DeepSeek-V3 (七牛300万包回退)",
+                provider="qiniu",
+                tier_desc="七牛云 300万 Token 免费包回退"
             )
             return RecommendationResult(
                 task=task,
                 strategy=strategy,
                 recommended_model=fallback,
-                reason="未检测到其它配置模型，使用 ModelScope 默认免费通道",
+                reason="未检测到其它配置模型，使用七牛云 300万 Token 默认免费通道",
                 backup_models=[]
             )
 

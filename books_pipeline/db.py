@@ -10,6 +10,7 @@ import os
 import sys
 import json
 import struct
+import asyncio
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -108,7 +109,7 @@ async def execute_turso(sql: str, args: list = None, retries: int = 3) -> List[D
 
     for attempt in range(retries):
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with httpx.AsyncClient(timeout=45.0, trust_env=False) as client:
                 res = await client.post(url, headers=headers, json=payload)
                 if res.status_code != 200:
                     logger.error(f"Turso HTTP 错误 [{res.status_code}] (重试 {attempt+1}/{retries}): {res.text}")

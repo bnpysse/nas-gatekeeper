@@ -138,6 +138,10 @@ async def render_dashboard(request: Request):
                     quota_type = "免费层"
                     remaining_display = "每日1500次"
                     expire_display = "循环补给"
+                elif pid == "qiniu":
+                    quota_type = "300万包"
+                    remaining_display = f"余 {rem_percent}% (300万)"
+                    expire_display = f"{days_left}天后到期" if days_left is not None else "约90天"
                 else:
                     quota_type = "私有免费"
                     remaining_display = total_quota if total_quota else "100%"

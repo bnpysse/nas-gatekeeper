@@ -45,6 +45,7 @@ class Settings:
     GEMINI_BASE_URL: str = os.environ.get("GEMINI_BASE_URL", "")
     DEEPSEEK_API_KEY: str = os.environ.get("DEEPSEEK_API_KEY", "")
     SILICONFLOW_API_KEY: str = os.environ.get("SILICONFLOW_API_KEY", "")
+    QINIU_API_KEY: str = os.environ.get("QINIU_API_KEY", "")
 
     # Turso 数据库
     TURSO_DATABASE_URL: str = os.environ.get("TURSO_DATABASE_URL", "")

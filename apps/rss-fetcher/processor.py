@@ -38,25 +38,58 @@ def get_deepseek_client() -> tuple:
         except Exception:
             pass
 
-    # 2. 直连阿里百炼 DashScope (qwen3.7-plus / qwen3.7-flash 0元池)
+    # 2. 直连七牛云 (300万 Token 免费包，满血 DeepSeek-V3 / Flash)
+    qiniu_key = os.getenv("QINIU_API_KEY", "sk-383d4909f49c0db53ad4976552799a7cf6735358e3d90d02dfa5670117441750")
+    if qiniu_key:
+        return OpenAI(
+            api_key=qiniu_key,
+            base_url="https://api.qnaigc.com/v1",
+            http_client=httpx.Client(trust_env=True, timeout=httpx.Timeout(60.0))
+        ), "deepseek/deepseek-v4-flash"
+
+    # 3. 直连阿里百炼 DashScope (qwen3.8-max-0902 / qwen3.7-flash 用完即停安全池)
     if DASHSCOPE_API_KEY:
         return OpenAI(
             api_key=DASHSCOPE_API_KEY,
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             http_client=httpx.Client(trust_env=False, timeout=httpx.Timeout(60.0))
-        ), "qwen3.7-plus"
-
-    # 3. 直连硅基流动 SiliconFlow (0元无限保底)
-    return OpenAI(
-        api_key=SILICONFLOW_API_KEY or "sk-wewpjlyfvwflfcqivobyumvhybqldextibizkxtkmajkkqvs",
-        base_url="https://api.siliconflow.cn/v1",
-        http_client=httpx.Client(trust_env=False, timeout=httpx.Timeout(60.0))
-    ), "deepseek-ai/DeepSeek-V3"
+        ), "qwen3.7-flash"
 
 def is_primarily_chinese(text: str) -> bool:
     """判断文本是否主要为中文"""
     chinese_chars = len(re.findall(r'[\u4e00-\u9fa5]', text))
     return chinese_chars > 30 and (chinese_chars / max(1, len(text[:500]))) > 0.2
+
+def clean_markdown_fence(text: str) -> str:
+    """彻底剥离大模型在整篇回复外层误加的 ```markdown ... ``` 代码块包裹"""
+    if not text:
+        return ""
+    body = text.strip()
+    if body.startswith("```markdown"):
+        body = re.sub(r'^\s*```markdown\s*\n', '', body)
+    elif body.startswith("```") and not body.startswith("```mermaid"):
+        body = re.sub(r'^\s*```\s*\n', '', body)
+    if body.endswith("```") and body.count("```") % 2 == 1:
+        body = re.sub(r'\n```\s*$', '', body)
+    return body.strip()
+
+def convert_mermaid_to_image(content: str) -> str:
+    """将文本中的 ```mermaid ... ``` 代码块转为 base64 编码的直接可渲染矢量 SVG 图片链接 (并附带折叠源码)"""
+    import base64
+    import json
+    pattern = r'```mermaid\s*\n(.*?)\n```'
+    def _repl(match):
+        code = match.group(1).strip()
+        obj = {"code": code, "mermaid": {"theme": "default"}}
+        b64 = base64.b64encode(json.dumps(obj).encode('utf-8')).decode('ascii')
+        svg_url = f"https://mermaid.ink/svg/{b64}"
+        return f"\n\n![架构流程图]({svg_url})\n\n<details><summary>📊 查看 Mermaid 流程图源码</summary>\n\n```mermaid\n{code}\n```\n</details>\n\n"
+    return re.sub(pattern, _repl, content, flags=re.DOTALL)
+
+def postprocess_markdown(text: str) -> str:
+    """综合后处理：清洗外层包裹并转换图表"""
+    return convert_mermaid_to_image(clean_markdown_fence(text))
+
 
 def translate_with_deepseek(text: str) -> str:
     if not text or not text.strip():
@@ -131,7 +164,7 @@ def generate_summary_with_deepseek(content: str, is_raw_content: bool = True) ->
             if chunk.choices and chunk.choices[0].delta.content:
                 chunks.append(chunk.choices[0].delta.content)
         result = "".join(chunks).strip()
-        return result if result else "摘要生成为空。"
+        return postprocess_markdown(result) if result else "摘要生成为空。"
     except Exception as e:
         print(f"⚠️ 生成总结失败: {e}")
         return "摘要生成失败。"

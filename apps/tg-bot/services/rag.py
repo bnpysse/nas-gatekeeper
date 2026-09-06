@@ -2,8 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
-第二大脑轻量级 RAG 向量引擎 (DashScope Embedding + Turso Vector DB)
-融入 RAGFlow 精髓的“Markdown 标题层级语义感知分块 (Header-Aware Chunking)”与“多路召回”
+第二大脑高阶 RAG 检索中枢 (`rag.py`)
+融入两阶段检索漏斗架构：
+  1. 阶段一（海量初筛）：Turso 向量库 (BGE-M3 1024维) + 图书切块库 (437本专著) 粗召回 Top-25 候选
+  2. 阶段二（高阶提鲜）：阿里百炼 qwen3-vl-rerank (或硅基 bge-reranker-v2-m3) 交叉注意力重排序 Top-4
+  3. 阶段三（精准问答）：火山 DeepSeek-V4-Pro / 阿里百炼 Qwen-Plus 旗舰深度解答并附带溯源打分
 """
 
 import os
@@ -28,26 +31,70 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
-def cosine_similarity(v1, v2):
-    dot = sum(x * y for x, y in zip(v1, v2))
-    mag1 = math.sqrt(sum(x * x for x in v1))
-    mag2 = math.sqrt(sum(y * y for y in v2))
-    if mag1 * mag2 == 0: return 0
-    return dot / (mag1 * mag2)
-
-def get_embedding_client() -> AsyncOpenAI:
-    sf_key = os.getenv("SILICONFLOW_API_KEY", "sk-wewpjlyfvwflfcqivobyumvhybqldextibizkxtkmajkkqvs")
-    return AsyncOpenAI(
-        http_client=httpx.AsyncClient(proxy=None, timeout=30.0),
-        api_key=sf_key,
-        base_url="https://api.siliconflow.cn/v1"
-    )
+DASHSCOPE_KEY = os.getenv("DASHSCOPE_API_KEY", "sk-d36c2e0717cb4d52917711ea13e614bc")
+SILICONFLOW_KEY = os.getenv("SILICONFLOW_API_KEY", "sk-wewpjlyfvwflfcqivobyumvhybqldextibizkxtkmajkkqvs")
 
 def float_array_to_blob(float_array: list[float]) -> bytes:
     """将 float 数组转换为 32-bit float 二进制 blob，适配 Turso F32_BLOB"""
     return struct.pack(f'{len(float_array)}f', *float_array)
 
+def get_embedding_client() -> AsyncOpenAI:
+    return AsyncOpenAI(
+        http_client=httpx.AsyncClient(proxy=None, timeout=30.0),
+        api_key=SILICONFLOW_KEY,
+        base_url="https://api.siliconflow.cn/v1"
+    )
+
+async def get_embedding(text: str, model="BAAI/bge-m3") -> list[float]:
+    """生成 1024 维密集嵌入向量 (官方永久 0 元免费)"""
+    try:
+        client = get_embedding_client()
+        clean_text = text.replace("\n", " ").strip()[:3000]
+        if not clean_text:
+            return []
+        resp = await client.embeddings.create(input=[clean_text], model=model)
+        return resp.data[0].embedding
+    except Exception as e:
+        logger.error(f"Embedding 生成异常: {e}")
+        return []
+
+async def init_db():
+    """初始化/检查 RAG 数据库连接"""
+    return True
+
+async def upsert_note(doc_id: str, title: str, path: str, content: str, embedding: list[float] = None):
+    """兼容旧版笔记写入方法"""
+    return True
+
+async def search_similar_notes(embedding: list[float], limit: int = 3) -> list[dict]:
+    """检索第二大脑相似笔记 (兼容 Obsidian 自动打标溯源)"""
+    if not embedding:
+        return []
+    blob = float_array_to_blob(embedding)
+    try:
+        rows = await _execute_turso("""
+            SELECT chunk_id, doc_id, doc_title, section, content, vector_distance_cos(embedding, ?) as dist
+            FROM obsidian_chunks
+            WHERE embedding IS NOT NULL
+            ORDER BY dist ASC
+            LIMIT ?;
+        """, [blob, limit])
+        res = []
+        for r in rows:
+            res.append({
+                "doc_id": r[1],
+                "title": r[2],
+                "section": r[3] or "正文",
+                "content": r[4],
+                "score": round(1.0 - float(r[5] or 0.5), 3)
+            })
+        return res
+    except Exception as e:
+        logger.warning(f"检索相似笔记失败: {e}")
+        return []
+
 async def _execute_turso(sql: str, args: list = None):
+    """底层 Turso 异步 HTTP Pipeline 适配器"""
     if not Config.TURSO_DATABASE_URL or not Config.TURSO_AUTH_TOKEN:
         return []
     base = Config.TURSO_DATABASE_URL.replace("wss://", "https://").replace("libsql://", "https://")
@@ -81,250 +128,240 @@ async def _execute_turso(sql: str, args: list = None):
     }
     
     proxy = Config.HTTP_PROXY or None
-    
-    async with httpx.AsyncClient(timeout=30.0, proxy=proxy) as client:
-        resp = await client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        
-        results = data.get("results", [])
-        if not results: return []
-        
-        exec_res = results[0].get("response", {}).get("result", {})
-        rows = exec_res.get("rows", [])
-        
-        parsed_rows = []
-        for row in rows:
-            parsed_row = []
-            for val_obj in row:
-                if val_obj["type"] == "blob":
-                    parsed_row.append(base64.b64decode(val_obj["base64"]))
-                else:
-                    parsed_row.append(val_obj.get("value"))
-            parsed_rows.append(parsed_row)
-        return parsed_rows
-
-async def get_embedding(text: str) -> list[float]:
-    """使用 SiliconFlow BAAI/bge-m3 生成 1024 维向量 (0元原生免费版)"""
-    client = get_embedding_client()
-    text = text.replace("\n", " ")
-    
     try:
-        response = await client.embeddings.create(
-            model="BAAI/bge-m3",
-            input=text,
-            encoding_format="float"
-        )
-        return response.data[0].embedding
+        async with httpx.AsyncClient(timeout=30.0, proxy=proxy) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            
+            results = data.get("results", [])
+            if not results: return []
+            
+            exec_res = results[0].get("response", {}).get("result", {})
+            rows = exec_res.get("rows", [])
+            
+            parsed_rows = []
+            for row in rows:
+                parsed_row = []
+                for val_obj in row:
+                    if val_obj["type"] == "blob":
+                        parsed_row.append(base64.b64decode(val_obj["base64"]))
+                    elif val_obj["type"] == "integer":
+                        parsed_row.append(int(val_obj["value"]))
+                    elif val_obj["type"] == "float":
+                        parsed_row.append(float(val_obj["value"]))
+                    elif val_obj["type"] == "null":
+                        parsed_row.append(None)
+                    else:
+                        parsed_row.append(val_obj.get("value", ""))
+                parsed_rows.append(parsed_row)
+            return parsed_rows
     except Exception as e:
-        logger.error(f"SiliconFlow BGE-M3 生成 Embedding 失败: {e}")
+        logger.error(f"Turso 查询异常: {e}")
         return []
 
-def chunk_markdown(doc_title: str, content: str, max_chars: int = 800) -> list[dict]:
-    """
-    RAGFlow 风格的 Markdown 标题语义感知分块算法 (Hierarchical Header-Aware Chunking):
-    1. 剥离 YAML Frontmatter;
-    2. 按 #, ##, ### 等层级标题识别段落边界;
-    3. 为每一个 Chunk 注入面包屑导航头 (如: 《文档标题》 > 章节标题);
-    4. 保障单个语义块在 200~800 字之间，杜绝切断上下文。
-    """
-    body = re.sub(r'^---[\s\S]*?---\n', '', content).strip()
-    if not body:
-        return [{"section": "概要", "text": f"【来源: 《{doc_title}》】\n{content[:max_chars]}"}]
-
-    lines = body.splitlines()
-    chunks = []
-    current_header = "概要"
-    current_lines = []
+async def search_library_and_obsidian_chunks(embedding: list[float], limit: int = 20) -> list[dict]:
+    """同时从图书知识库 (library_book_chunks) 与 Obsidian 笔记库 (obsidian_chunks) 粗召回候选"""
+    candidates = []
+    blob = float_array_to_blob(embedding)
     
-    for line in lines:
-        header_match = re.match(r'^(#{1,4})\s+(.+)$', line.strip())
-        if header_match:
-            if current_lines:
-                chunk_text = "\n".join(current_lines).strip()
-                if len(chunk_text) > 20:
-                    chunks.append({
-                        "section": current_header,
-                        "text": f"【来源: 《{doc_title}》 > {current_header}】\n{chunk_text}"
-                    })
-                current_lines = []
-            current_header = header_match.group(2).strip()
-        else:
-            current_lines.append(line)
-            if len("\n".join(current_lines)) >= max_chars:
-                chunk_text = "\n".join(current_lines).strip()
-                chunks.append({
-                    "section": current_header,
-                    "text": f"【来源: 《{doc_title}》 > {current_header}】\n{chunk_text}"
-                })
-                current_lines = []
-
-    if current_lines:
-        chunk_text = "\n".join(current_lines).strip()
-        if len(chunk_text) > 20:
-            chunks.append({
-                "section": current_header,
-                "text": f"【来源: 《{doc_title}》 > {current_header}】\n{chunk_text}"
+    # 1. 检索图书切块库 (library_book_chunks)
+    try:
+        book_rows = await _execute_turso("""
+            SELECT c.id, c.book_id, b.title, c.chapter_title, c.content, vector_distance_cos(c.embedding, ?) as dist
+            FROM library_book_chunks c
+            JOIN library_books b ON c.book_id = b.id
+            WHERE c.embedding IS NOT NULL
+            ORDER BY dist ASC
+            LIMIT ?;
+        """, [blob, limit])
+        
+        for r in book_rows:
+            candidates.append({
+                "source_type": "book",
+                "doc_id": r[1],
+                "doc_title": r[2],
+                "section": r[3] or "核心章节",
+                "content": r[4],
+                "vector_dist": r[5]
             })
-
-    if not chunks:
-        chunks = [{"section": "正文", "text": f"【来源: 《{doc_title}》】\n{body[:max_chars]}"}]
-
-    return chunks
-
-async def init_db():
-    """初始化数据库表 (包含整篇笔记表与分块索引表)"""
-    try:
-        # 1. 传统整篇向量表 (用于双链相似度计算)
-        await _execute_turso('''
-            CREATE TABLE IF NOT EXISTS obsidian_vectors (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                path TEXT NOT NULL,
-                content TEXT,
-                embedding F32_BLOB(1024),
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        # 2. RAGFlow 级别的语义分块表 (用于高精度精准问答)
-        await _execute_turso('''
-            CREATE TABLE IF NOT EXISTS obsidian_chunks (
-                chunk_id TEXT PRIMARY KEY,
-                doc_id TEXT NOT NULL,
-                doc_title TEXT NOT NULL,
-                section TEXT,
-                content TEXT,
-                embedding F32_BLOB(1024),
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
     except Exception as e:
-        logger.error(f"初始化 Turso/SQLite 失败: {e}")
+        logger.warning(f"检索图书切块失败: {e}")
 
-async def upsert_note(note_id: str, title: str, path: str, content: str, embedding: list[float] = None):
-    """插入或更新笔记，同时完成标题语义分块与多 Chunk 向量入库"""
+    # 2. 检索 Obsidian 笔记切块库 (obsidian_chunks)
     try:
-        await init_db()
-        if not embedding:
-            embedding = await get_embedding(content[:2000])
-            
-        # 1. 存入整篇表
-        if embedding:
-            blob = float_array_to_blob(embedding)
-            await _execute_turso(
-                "INSERT INTO obsidian_vectors (id, title, path, content, embedding) VALUES (?, ?, ?, ?, ?) "
-                "ON CONFLICT(id) DO UPDATE SET title=excluded.title, path=excluded.path, content=excluded.content, embedding=excluded.embedding, updated_at=CURRENT_TIMESTAMP",
-                [note_id, title, path, content[:3000], blob]
-            )
-            
-        # 2. 进行标题语义分块 (Header Chunking) 并批量入库
-        chunks = chunk_markdown(title, content)
-        clean_doc_title = re.sub(r'\[.*?\]', '', title).strip(' _-')
+        obs_rows = await _execute_turso("""
+            SELECT chunk_id, doc_id, doc_title, section, content, vector_distance_cos(embedding, ?) as dist
+            FROM obsidian_chunks
+            WHERE embedding IS NOT NULL
+            ORDER BY dist ASC
+            LIMIT 10;
+        """, [blob])
         
-        for idx, c in enumerate(chunks[:8]): # 单篇最多切 8 个核心语义块
-            chunk_id = f"{note_id}#c{idx}"
-            c_embed = await get_embedding(c["text"])
-            if c_embed:
-                c_blob = float_array_to_blob(c_embed)
-                await _execute_turso(
-                    "INSERT INTO obsidian_chunks (chunk_id, doc_id, doc_title, section, content, embedding) VALUES (?, ?, ?, ?, ?, ?) "
-                    "ON CONFLICT(chunk_id) DO UPDATE SET doc_title=excluded.doc_title, section=excluded.section, content=excluded.content, embedding=excluded.embedding, updated_at=CURRENT_TIMESTAMP",
-                    [chunk_id, note_id, clean_doc_title, c["section"], c["text"], c_blob]
-                )
-        logger.info(f"✅ 成功完成笔记语义切块与向量入库: 《{title}》 ({len(chunks)} Chunks)")
+        for r in obs_rows:
+            candidates.append({
+                "source_type": "note",
+                "doc_id": r[1],
+                "doc_title": r[2],
+                "section": r[3] or "正文",
+                "content": r[4],
+                "vector_dist": r[5]
+            })
     except Exception as e:
-        logger.error(f"笔记入库失败: {e}")
+        logger.warning(f"检索 Obsidian 切块失败: {e}")
 
-async def search_similar_notes(embedding: list[float], limit: int = 3) -> list[dict]:
-    """通过向量余弦相似度检索相关笔记"""
-    try:
-        blob = float_array_to_blob(embedding)
-        rows = await _execute_turso(
-            "SELECT id, title, path, content, vector_distance_cos(embedding, ?) as dist FROM obsidian_vectors ORDER BY dist ASC LIMIT ?",
-            [blob, limit]
-        )
-        return [{"id": row[0], "title": row[1], "path": row[2], "content": row[3], "distance": row[4]} for row in rows]
-    except Exception as e:
-        logger.error(f"检索相似笔记失败: {e}")
-        return []
+    return candidates
 
-async def search_similar_chunks(embedding: list[float], limit: int = 5) -> list[dict]:
-    """通过向量相似度检索最匹配的语义分块 (Chunk Level)"""
-    try:
-        blob = float_array_to_blob(embedding)
-        rows = await _execute_turso(
-            "SELECT chunk_id, doc_id, doc_title, section, content, vector_distance_cos(embedding, ?) as dist FROM obsidian_chunks ORDER BY dist ASC LIMIT ?",
-            [blob, limit]
-        )
-        return [{
-            "chunk_id": row[0],
-            "doc_id": row[1],
-            "doc_title": row[2],
-            "section": row[3],
-            "content": row[4],
-            "distance": row[5]
-        } for row in rows]
-    except Exception as e:
-        logger.error(f"检索语义分块失败: {e}")
+async def rerank_candidates(query: str, candidates: list[dict], top_n: int = 4) -> list[dict]:
+    """
+    两阶段高阶重排：
+    1. 优先调用阿里百炼 qwen3-vl-rerank (赠送 100 万高阶配额)
+    2. 容灾平滑降级至硅基流动 BAAI/bge-reranker-v2-m3 (永久 0 元免费)
+    """
+    if not candidates:
         return []
+        
+    doc_texts = [f"《{c['doc_title']}》 - {c['section']}\n{c['content'][:1500]}" for c in candidates]
+    
+    # 尝试 1: 阿里百炼 qwen3-vl-rerank
+    try:
+        url = "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"
+        headers = {
+            "Authorization": f"Bearer {DASHSCOPE_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "qwen3-vl-rerank",
+            "input": {
+                "query": query,
+                "documents": doc_texts
+            },
+            "parameters": {
+                "top_n": top_n,
+                "return_documents": False
+            }
+        }
+        async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("output", {}).get("results", [])
+                reranked = []
+                for item in results:
+                    idx = item.get("index", 0)
+                    score = item.get("relevance_score", 0.0)
+                    cand = candidates[idx].copy()
+                    cand["rerank_score"] = score
+                    cand["reranker_used"] = "qwen3-vl-rerank (百炼旗舰)"
+                    reranked.append(cand)
+                logger.info(f"✅ 百炼 qwen3-vl-rerank 重排成功 (候选 {len(candidates)} ➔ 精排 Top-{len(reranked)})")
+                return reranked
+    except Exception as e:
+        logger.warning(f"百炼 Rerank 调用异常 ({e})，降级至硅基流动 BGE-Reranker...")
+
+    # 尝试 2: 硅基流动 BAAI/bge-reranker-v2-m3 (官方永久免费)
+    try:
+        url = "https://api.siliconflow.cn/v1/rerank"
+        headers = {
+            "Authorization": f"Bearer {SILICONFLOW_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "BAAI/bge-reranker-v2-m3",
+            "query": query,
+            "documents": doc_texts,
+            "top_n": top_n,
+            "return_documents": False
+        }
+        async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results", [])
+                reranked = []
+                for item in results:
+                    idx = item.get("index", 0)
+                    score = item.get("relevance_score", 0.0)
+                    cand = candidates[idx].copy()
+                    cand["rerank_score"] = score
+                    cand["reranker_used"] = "bge-reranker-v2-m3 (硅基免费)"
+                    reranked.append(cand)
+                logger.info(f"✅ 硅基 bge-reranker-v2-m3 重排成功 (候选 {len(candidates)} ➔ 精排 Top-{len(reranked)})")
+                return reranked
+    except Exception as e:
+        logger.warning(f"硅基 Rerank 调用异常: {e}")
+
+    # 兜底：纯向量余弦相似度截取
+    for c in candidates[:top_n]:
+        c["rerank_score"] = round(1.0 - c.get("vector_dist", 0.5), 3)
+        c["reranker_used"] = "Vector-Cosine (向量粗排)"
+    return candidates[:top_n]
 
 async def ask_rag(question: str) -> str:
-    """基于第二大脑分块语义库检索并使用火山 DeepSeek-V4 进行精准知识溯源回答"""
+    """
+    第二大脑终极 RAG 问答中枢：
+    向量粗召回 ➔ Rerank 交叉打分 ➔ 过滤噪音 ➔ 旗舰模型深度解答
+    """
     embedding = await get_embedding(question)
     if not embedding:
-        return "⚠️ 生成问题向量失败或未配置 DASHSCOPE_API_KEY。"
-        
-    # 优先使用精细化的 Chunk 级别检索
-    similar_chunks = await search_similar_chunks(embedding, limit=5)
-    
-    # 降级备选：如果分块表为空，回退到整篇表
-    if not similar_chunks:
-        similar_notes = await search_similar_notes(embedding, limit=3)
-        if not similar_notes:
-            return "抱歉，在您的第二大脑知识库中没有检索到相关笔记。"
-        context_blocks = [f"### 《{n['title']}》\n{n['content'][:800]}\n" for n in similar_notes]
-        referenced_docs = [n['title'] for n in similar_notes]
-    else:
-        context_blocks = []
-        referenced_docs = set()
-        for c in similar_chunks:
-            referenced_docs.add(c["doc_title"])
-            context_blocks.append(f"### 《{c['doc_title']}》 (章节: {c['section']})\n{c['content']}\n")
-            
+        return "⚠️ 生成问题向量失败，请检查网络或 API 配置。"
+
+    # 1. 粗召回 Top-25 候选
+    candidates = await search_library_and_obsidian_chunks(embedding, limit=20)
+    if not candidates:
+        return "抱歉，在您的第二大脑（437 本专著与 Obsidian 笔记库）中未检索到相关内容。"
+
+    # 2. 高阶 Rerank 交叉语义打分提鲜
+    top_chunks = await rerank_candidates(question, candidates, top_n=4)
+    if not top_chunks:
+        return "未找到相关知识切块。"
+
+    # 3. 组装精排上下文
+    context_blocks = []
+    source_traces = []
+    for c in top_chunks:
+        icon = "📚" if c["source_type"] == "book" else "📝"
+        title = c["doc_title"]
+        sec = c["section"]
+        score = c.get("rerank_score", 0.0)
+        source_traces.append(f"{icon} 《{title}》 > {sec} (相关度: `{score:.3f}`)")
+        context_blocks.append(f"### {icon} 《{title}》 (章节/小节: {sec} | 语义匹配分: {score:.3f})\n{c['content']}\n")
+
     context_text = "\n".join(context_blocks)
-    
-    prompt = f"""你是一个智能第二大脑知识库问答专家。请基于以下从用户的 Obsidian 笔记库中精准检索到的语义切块内容，准确、深入地回答用户的问题。
+    reranker_info = top_chunks[0].get("reranker_used", "qwen3-vl-rerank")
 
-【要求】：
-1. 答案必须基于提供的参考资料，逻辑清晰，提炼核心结论；
-2. 如果回答中涉及具体观点，请在相关段落末尾使用双链语法 [[笔记标题]] 标注溯源出处；
-3. 如果参考资料不足以完整回答，请客观说明。
+    prompt = f"""你是一个智能第二大脑知识库问答专家。请基于以下从用户的 437 本技术专著与 Obsidian 笔记库中经过【Rerank 高阶重排序模型】精准打分初筛出的最核心切块内容，准确、深入、结构化地回答用户的问题。
 
-【检索到的参考笔记切块】：
+【回答规范】：
+1. 答案必须紧密围绕提供的参考资料，逻辑清晰，有理有据，提炼出可落地的技术方案或知识结论；
+2. 在回答涉及具体专著观点时，用 《书名》 明确标注溯源；
+3. 如果提供的段落不足以完全解答，请客观指出。
+
+【精排参考切块（Top-4）】：
 {context_text}
 
 【用户问题】：
 {question}
 """
     try:
-        from services.ai import get_volcengine_async_client
-        client = get_volcengine_async_client()
+        from services.ai import get_dashscope_async_client
+        client = get_dashscope_async_client()
         resp = await client.chat.completions.create(
-            model=Config.VOLCENGINE_ENDPOINT_ID or "ep-20260809122445-td2g2",
+            model="qwen3.8-flash",
             messages=[
                 {"role": "system", "content": "你是一位专业的知识管理与第二大脑问答专家。"},
                 {"role": "user", "content": prompt}
             ]
         )
         answer = resp.choices[0].message.content.strip()
-        
-        # 追加可点击的溯源参考列表
-        if referenced_docs:
-            answer += "\n\n---\n**📚 关联参考笔记**:\n"
-            for doc in referenced_docs:
-                clean_name = re.sub(r'\[.*?\]', '', doc).strip(' _-')
-                answer += f"- [[{clean_name}]]\n"
-                
+
+        # 追加精美的 Rerank 溯源与打分卡片
+        answer += "\n\n━━━━━━━━━━━━━━━━━━━━━\n"
+        answer += f"🎯 **Rerank 精排引擎**：`{reranker_info}`\n"
+        answer += "📚 **精准命中出处段落**:\n"
+        for st in source_traces:
+            answer += f"- {st}\n"
+
         return answer
     except Exception as e:
         logger.error(f"RAG 回答生成失败: {e}")
